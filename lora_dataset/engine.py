@@ -435,6 +435,7 @@ class DatasetEngine:
                 "stage": stage,
                 "reason": record.get("error") or cleanup_status or "Unknown processing error",
                 "cleanup_verification_status": cleanup_status,
+                "detector_confidence_threshold": verification.get("confidence_threshold"),
                 "residual_detection_count": int(
                     verification.get("residual_detection_count", len(residual_detections)) or 0
                 ),

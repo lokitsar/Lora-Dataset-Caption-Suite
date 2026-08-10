@@ -10,6 +10,7 @@ from .analysis import _normalize_box, _resolve_ultralytics_model
 
 VERIFICATION_SCHEMA_VERSION = 2
 DEFAULT_MINIMUM_LUMINANCE_CORRELATION = 0.90
+MINIMUM_WATERMARK_CONFIDENCE = 0.30
 
 
 def cleanup_verifier_config_version(config):
@@ -105,13 +106,19 @@ class UltralyticsCleanupVerifier(CleanupVerifier):
             self.model = YOLO(str(_resolve_ultralytics_model(configured)))
         return self.model
 
+    def _confidence_threshold(self):
+        return max(
+            MINIMUM_WATERMARK_CONFIDENCE,
+            float(self.config.get("confidence", MINIMUM_WATERMARK_CONFIDENCE)),
+        )
+
     def _detect(self, image_path, image):
         model = self._load_model()
         if model is None:
             return []
         results = model.predict(
             source=str(image_path),
-            conf=float(self.config.get("confidence", 0.3)),
+            conf=self._confidence_threshold(),
             imgsz=int(self.config.get("image_size", 640)),
             device=self.config.get("device", "cpu"),
             verbose=False,
@@ -202,6 +209,7 @@ class UltralyticsCleanupVerifier(CleanupVerifier):
             "schema_version": VERIFICATION_SCHEMA_VERSION,
             "status": status,
             "passed": status == "verified_clean",
+            "confidence_threshold": self._confidence_threshold(),
             "residual_detections": detections,
             "residual_detection_count": len(detections),
             "fidelity_metrics": metrics,

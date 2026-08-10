@@ -11,6 +11,7 @@ from .cleanup import (
     create_cleanup_provider,
 )
 from .cleanup_verification import (
+    MINIMUM_WATERMARK_CONFIDENCE,
     cleanup_verifier_config_version,
     create_cleanup_verifier,
 )
@@ -330,7 +331,16 @@ class DatasetCleanupVerifierNode:
         return {
             "required": {
                 "watermark_model": (models, {"default": models[0]}),
-                "confidence": ("FLOAT", {"default": 0.3, "min": 0.05, "max": 0.95, "step": 0.05}),
+                "confidence": (
+                    "FLOAT",
+                    {
+                        "default": MINIMUM_WATERMARK_CONFIDENCE,
+                        "min": MINIMUM_WATERMARK_CONFIDENCE,
+                        "max": 0.95,
+                        "step": 0.05,
+                        "tooltip": "Residual detections below 30% are ignored to avoid low-confidence scene false positives.",
+                    },
+                ),
                 "image_size": ("INT", {"default": 640, "min": 320, "max": 1280, "step": 32}),
                 "device": (["cpu", "0"],),
                 "minimum_structural_similarity": (
@@ -376,7 +386,7 @@ class DatasetCleanupVerifierNode:
         config = {
             "provider": "ultralytics_cleanup_verifier",
             "watermark_model": watermark_model,
-            "confidence": float(confidence),
+            "confidence": max(MINIMUM_WATERMARK_CONFIDENCE, float(confidence)),
             "image_size": int(image_size),
             "device": device,
             "minimum_structural_similarity": float(minimum_structural_similarity),
@@ -701,6 +711,9 @@ class DatasetRunSummaryNode:
                 stage = issue.get("stage") or "processing"
                 reason = issue.get("reason") or "No reason recorded"
                 lines.append(f"- [{issue_status}] {display_name} ({stage}): {reason}")
+                confidence_threshold = issue.get("detector_confidence_threshold")
+                if isinstance(confidence_threshold, (int, float)):
+                    lines.append(f"  Verifier threshold: {confidence_threshold:.1%}")
                 detections = issue.get("residual_detections") or []
                 for detection in detections[:3] if isinstance(detections, list) else []:
                     if not isinstance(detection, dict):

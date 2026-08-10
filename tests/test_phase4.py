@@ -407,3 +407,6 @@ def test_phase4_verifier_is_an_optional_builder_provider():
         "bbox/watermark.pt", 0.2, 640, "cpu", 0.72, 0.12, 0.20, 0.30, 0.02
     )
     assert config["schema_version"] == VERIFICATION_SCHEMA_VERSION
+    assert config["confidence"] == 0.3
+    assert UltralyticsCleanupVerifier({"confidence": 0.2})._confidence_threshold() == 0.3
+    assert UltralyticsCleanupVerifier({"confidence": 0.45})._confidence_threshold() == 0.45
