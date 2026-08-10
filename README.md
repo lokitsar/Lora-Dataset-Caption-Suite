@@ -17,7 +17,9 @@ caption guidance for Character, Style, and Concept LoRAs.
 - Originals are never modified.
 - Optional Flux 2 Klein 9B cleanup removes watermarks, logos, signatures, URLs,
   timestamps, overlay text, and similar artifacts before captioning.
-- Cleanup verification checks both residual artifacts and excessive visual changes.
+- Cleanup verification always checks excessive visual changes. Residual watermark
+  scanning is optional; the default trusts Klein so legitimate clothing and scene
+  text are not rejected.
 - Ultralytics subject and face detection supports identity-preserving crops.
 - Caption providers include Ollama, OpenRouter, NanoGPT, and Kobold-compatible APIs.
 - Provider images sent to NanoGPT are capped at one megapixel without shrinking the
@@ -26,6 +28,9 @@ caption guidance for Character, Style, and Concept LoRAs.
   editing instructions, and caption-model thought notes are filtered out.
 - Exact duplicates are excluded automatically; near duplicates and quality warnings
   are reported for review.
+- Krea 2 reports include the Raw-model/1024-bucket handoff, native source-area
+  coverage, missing-trigger guidance, and recurring caption descriptors that may
+  contribute to trigger bleed.
 - Optional stable naming creates exact pairs such as `taarna_0001.png` and
   `taarna_0001.txt` without renumbering existing items.
 - A SQLite manifest makes every stage resumable and auditable.
@@ -60,7 +65,7 @@ The App promotes these controls while keeping dataset logic in the Python backen
 - Krea 2 or Anima recipe, LoRA type, trigger, and additional caption instructions
 - caption provider, API URL/key, API model discovery, and model selection
 - installed Klein diffusion model, text encoder, and VAE
-- watermark, subject, and face detector models
+- watermark verification mode, watermark model, subject model, and face model
 - resume/retry/rebuild behavior
 - preserved or stable numbered output naming
 
@@ -73,7 +78,7 @@ run mode. On completion, App Mode displays the visual Dataset Report.
 discover source images
   -> normalize working output to PNG
   -> Klein universal overlay cleanup
-  -> residual-artifact and fidelity verification
+  -> image-fidelity verification (optional residual-artifact scan)
   -> subject and face analysis
   -> identity-preserving crop
   -> model/type-specific positive caption
@@ -98,7 +103,8 @@ review/                   deterministic evidence and excluded/review items
 
 The Run Summary reports failed and excluded filenames with their recorded reasons,
 plus duplicates, image quality, caption length, orientation, crop outcomes, subject
-visibility, and naming state.
+visibility, naming state, Krea 2 training targets, 1024 source coverage, and
+recurring-caption guidance.
 
 ## Included nodes
 

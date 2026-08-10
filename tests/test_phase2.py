@@ -90,7 +90,8 @@ def test_provider_generates_caption_from_normalized_png_with_profile_recipe(tmp_
     assert provider.calls[0]["format"] == "PNG"
     assert provider.calls[0]["path"].suffix == ".png"
     assert "Maximum length: 110 words" in provider.calls[0]["instruction"]
-    assert "Prioritize pose, expression, gaze" in provider.calls[0]["instruction"]
+    assert "Focus on visible factors that vary" in provider.calls[0]["instruction"]
+    assert "Do not routinely repeat invariant facial features" in provider.calls[0]["instruction"]
     assert "Mention the visible handheld tool if present." in provider.calls[0]["instruction"]
     assert "Use concrete declarative visual language" in provider.calls[0]["instruction"]
     assert "Return only the caption content" in provider.calls[0]["instruction"]
@@ -398,7 +399,8 @@ def test_profile_prompts_are_specific_and_trigger_is_applied_locally():
     style = build_caption_instruction(profile("Style"))
     concept = build_caption_instruction(profile("Concept"))
     assert character != style != concept
-    assert "Prioritize pose, expression, gaze" in character
+    assert "Focus on visible factors that vary" in character
+    assert "Do not routinely repeat invariant facial features" in character
     assert "composition, spatial layout" in style
     assert "Make the depicted interaction unambiguous" in concept
     assert apply_trigger("a visible subject", profile()) == "test_subject, a visible subject"

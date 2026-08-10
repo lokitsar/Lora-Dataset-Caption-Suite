@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "models": {
     "krea2": {
       "display_name": "Krea 2",
@@ -35,7 +35,7 @@
           "crop_strategy": "identity_preserving",
           "crop_max_removed_fraction": 0.35,
           "caption_max_words": 110,
-          "caption_instruction": "Describe the visible subject using concise natural language. Prioritize pose, expression, gaze, framing, hair, clothing, accessories, lighting, and setting. Use concrete visual statements and keep background details brief.",
+          "caption_instruction": "Focus on visible factors that vary from image to image using concise natural language: clothing, accessories, pose, expression, gaze, framing, action, lighting, and setting. The trigger represents the recurring subject. Do not routinely repeat invariant facial features, eye color, or characteristic hair; mention hair only when its style, arrangement, or visibility is important to this specific image. Use concrete visual statements and keep background details brief.",
           "caption": {
             "describe_identity": false,
             "describe_clothing": true,

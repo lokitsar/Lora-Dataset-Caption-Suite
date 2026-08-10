@@ -1,4 +1,6 @@
 import json
+import math
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,7 +9,13 @@ import numpy as np
 from PIL import Image
 
 
-INTELLIGENCE_SCHEMA_VERSION = 1
+INTELLIGENCE_SCHEMA_VERSION = 2
+
+_DESCRIPTOR_BOUNDARY_STOPWORDS = {
+    "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of",
+    "on", "or", "the", "to", "under", "with", "while", "he", "she", "they",
+    "his", "her", "their", "this", "that",
+}
 
 
 def _utc_now():
@@ -141,6 +149,112 @@ def _caption_groups(records):
     ]
 
 
+def _recurring_caption_descriptors(records, trigger="", minimum_fraction=0.60, limit=10):
+    caption_tokens = []
+    trigger_pattern = re.compile(re.escape(trigger), re.IGNORECASE) if trigger else None
+    for record in records:
+        caption_path = Path(record["caption_path"])
+        if not caption_path.is_file():
+            continue
+        caption = caption_path.read_text(encoding="utf-8-sig")
+        if trigger_pattern is not None:
+            caption = trigger_pattern.sub(" ", caption)
+        tokens = [
+            token.casefold().strip("'-")
+            for token in re.findall(r"[\w$'-]+", caption, flags=re.UNICODE)
+        ]
+        tokens = [token for token in tokens if token]
+        if tokens:
+            caption_tokens.append(tokens)
+
+    caption_count = len(caption_tokens)
+    minimum_count = max(3, int(math.ceil(caption_count * float(minimum_fraction))))
+    counts = Counter()
+    for tokens in caption_tokens:
+        candidates = set()
+        for size in (3, 2):
+            for index in range(0, len(tokens) - size + 1):
+                phrase_tokens = tokens[index:index + size]
+                if any(token in _DESCRIPTOR_BOUNDARY_STOPWORDS for token in phrase_tokens):
+                    continue
+                if all(token.isdigit() for token in phrase_tokens):
+                    continue
+                candidates.add(" ".join(phrase_tokens))
+        counts.update(candidates)
+
+    ranked = [
+        {
+            "text": phrase,
+            "count": count,
+            "fraction": round(count / caption_count, 4) if caption_count else 0.0,
+        }
+        for phrase, count in counts.items()
+        if count >= minimum_count
+    ]
+    ranked.sort(
+        key=lambda item: (-item["fraction"], -len(item["text"].split()), item["text"])
+    )
+    selected = []
+    for item in ranked:
+        if any(item["text"] in existing["text"] for existing in selected):
+            continue
+        selected.append(item)
+        if len(selected) >= int(limit):
+            break
+    return {
+        "caption_count": caption_count,
+        "minimum_fraction": float(minimum_fraction),
+        "minimum_count": minimum_count if caption_count else 0,
+        "recurring_descriptors": selected,
+        "trigger_bleed_review_recommended": bool(selected),
+    }
+
+
+def _training_handoff(profile, quality_items, records):
+    settings = profile.get("settings", {})
+    preferred = [int(value) for value in settings.get("preferred_resolutions", []) if int(value) > 0]
+    target = preferred[0] if preferred else None
+    target_pixels = target * target if target else None
+    dimensions = [item["dimensions"] for item in quality_items if item.get("dimensions")]
+    pixel_counts = [width * height for width, height in dimensions]
+    at_target = sum(1 for pixels in pixel_counts if target_pixels and pixels >= target_pixels)
+    below_target = len(pixel_counts) - at_target if target_pixels else 0
+    current_profile_version = str(profile.get("profile_version") or "")
+    profile_version_counts = Counter(
+        str(record.get("profile_version"))
+        for record in records
+        if record.get("profile_version")
+    )
+    outdated_profile_items = sum(
+        count
+        for version, count in profile_version_counts.items()
+        if current_profile_version and version != current_profile_version
+    )
+    return {
+        "training_checkpoint": settings.get("training_checkpoint"),
+        "preferred_resolutions": preferred,
+        "target_bucket_resolution": target,
+        "target_pixel_area": target_pixels,
+        "evaluated_image_count": len(pixel_counts),
+        "at_or_above_target_area_count": at_target,
+        "below_target_area_count": below_target,
+        "target_area_coverage_fraction": (
+            round(at_target / len(pixel_counts), 4) if pixel_counts and target_pixels else None
+        ),
+        "minimum_source_megapixels": (
+            round(min(pixel_counts) / 1_000_000, 4) if pixel_counts else None
+        ),
+        "average_source_megapixels": (
+            round(sum(pixel_counts) / len(pixel_counts) / 1_000_000, 4)
+            if pixel_counts else None
+        ),
+        "current_profile_version": current_profile_version,
+        "caption_profile_version_counts": dict(profile_version_counts),
+        "outdated_caption_profile_count": outdated_profile_items,
+        "advisory_only": True,
+    }
+
+
 def _item_quality(record, profile, duplicate_caption_images):
     settings = profile.get("settings", {})
     image_path = Path(record["output_image_path"])
@@ -245,6 +359,55 @@ def build_dataset_report(records, profile, training_ready):
         _item_quality(record, profile, duplicate_caption_images)
         for record in eligible_records
     ]
+    training_handoff = _training_handoff(profile, quality_items, eligible_records)
+    is_krea_character = (
+        profile.get("model") == "krea2" and profile.get("dataset_type") == "character"
+    )
+    caption_recurrence = _recurring_caption_descriptors(
+        eligible_records,
+        trigger=profile.get("trigger", ""),
+    ) if is_krea_character else {
+        "caption_count": len(eligible_records),
+        "minimum_fraction": 0.60,
+        "minimum_count": 0,
+        "recurring_descriptors": [],
+        "trigger_bleed_review_recommended": False,
+    }
+    guidance_warnings = []
+    if is_krea_character and not str(profile.get("trigger") or "").strip():
+        guidance_warnings.append({
+            "code": "krea_character_trigger_missing",
+            "message": "Krea character training has no trigger; a trigger is recommended to carry stable identity.",
+        })
+    if (
+        profile.get("model") == "krea2"
+        and training_handoff.get("below_target_area_count", 0) > 0
+    ):
+        guidance_warnings.append({
+            "code": "krea_1024_bucket_source_coverage_incomplete",
+            "message": (
+                f"{training_handoff['below_target_area_count']} image(s) are below the "
+                f"{training_handoff['target_bucket_resolution']}² preferred source-pixel area; "
+                "the trainer may need to upscale them for 1024 buckets."
+            ),
+        })
+    if caption_recurrence["trigger_bleed_review_recommended"]:
+        guidance_warnings.append({
+            "code": "krea_character_recurring_descriptors",
+            "message": (
+                "Highly recurring caption descriptors may be learned outside the trigger; "
+                "review the recurring-descriptor list for invariant identity traits."
+            ),
+        })
+    if is_krea_character and training_handoff["outdated_caption_profile_count"] > 0:
+        guidance_warnings.append({
+            "code": "krea_caption_recipe_revision_mixed",
+            "message": (
+                f"{training_handoff['outdated_caption_profile_count']} caption(s) were generated "
+                "with an earlier Krea recipe. Resume will preserve them; use an intentional "
+                "revisioned force rebuild only if you want every caption regenerated."
+            ),
+        })
     scores = [item["score"] for item in quality_items]
     warning_counts = Counter(
         warning for item in quality_items for warning in item["warnings"]
@@ -267,6 +430,7 @@ def build_dataset_report(records, profile, training_ready):
     review_recommended = bool(
         near_duplicate_groups
         or duplicate_caption_groups
+        or guidance_warnings
         or (quality_items and len(warning_items) / len(quality_items) > 0.25)
         or (scores and sum(scores) / len(scores) < 80)
     )
@@ -327,6 +491,12 @@ def build_dataset_report(records, profile, training_ready):
             if caption_word_counts else 0.0,
             "minimum_words": min(caption_word_counts) if caption_word_counts else 0,
             "maximum_words": max(caption_word_counts) if caption_word_counts else 0,
+            "recurrence": caption_recurrence,
+        },
+        "training_handoff": training_handoff,
+        "guidance": {
+            "warning_count": len(guidance_warnings),
+            "warnings": guidance_warnings,
         },
         "naming": {
             "mode_counts": dict(naming_modes),

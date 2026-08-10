@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 
 from lora_dataset.engine import DatasetEngine
+from lora_dataset.intelligence import build_dataset_report
 from lora_dataset.manifest import DatasetManifest
 from lora_dataset.nodes import DatasetRunSummaryNode, NODE_CLASS_MAPPINGS
 from lora_dataset.profile import DatasetProfileRegistry
@@ -186,6 +187,83 @@ def test_numbered_lora_naming_is_stable_and_renames_without_recaptioning(tmp_pat
         "aa.png",
         "b.png",
     ]
+
+
+def test_krea_report_adds_1024_handoff_trigger_and_recurring_descriptor_guidance(tmp_path):
+    dataset = tmp_path / "dataset"
+    captions = [
+        "subject_token, a woman with long black hair wearing a red coat beside a window",
+        "subject_token, a woman with long black hair wearing a blue dress outdoors",
+        "subject_token, a woman with long black hair seated on a sofa in soft light",
+        "subject_token, a woman with long black hair wearing a white blouse under sunlight",
+    ]
+    sizes = [(1024, 1024), (1024, 1024), (800, 800), (800, 800)]
+    records = []
+    for index, (caption, size) in enumerate(zip(captions, sizes), 1):
+        image_path = dataset / f"subject_{index:04d}.png"
+        caption_path = dataset / f"subject_{index:04d}.txt"
+        make_image(image_path, color=(index * 20, index * 30, index * 40), size=size)
+        caption_path.write_text(caption, encoding="utf-8")
+        records.append({
+            "active": 1,
+            "status": "complete",
+            "source_relative_path": f"source-{index}.jpg",
+            "source_hash": f"hash-{index}",
+            "output_image_path": str(image_path),
+            "caption_path": str(caption_path),
+            "analysis_json": "{}",
+            "crop_json": "{}",
+            "crop_status": "not_needed_allowed_aspect",
+            "output_naming_mode": "lora_name_numbered",
+            "naming_sequence": index,
+            "lora_name": "subject",
+            "profile_version": "older-krea-recipe",
+        })
+
+    recipe = profile()
+    report = build_dataset_report(records, recipe, training_ready=True)
+    handoff = report["training_handoff"]
+    assert handoff["training_checkpoint"] == "Krea 2 Raw"
+    assert handoff["target_bucket_resolution"] == 1024
+    assert handoff["at_or_above_target_area_count"] == 2
+    assert handoff["below_target_area_count"] == 2
+    descriptors = report["captions"]["recurrence"]["recurring_descriptors"]
+    assert "long black hair" in {item["text"] for item in descriptors}
+    guidance_codes = {item["code"] for item in report["guidance"]["warnings"]}
+    assert "krea_1024_bucket_source_coverage_incomplete" in guidance_codes
+    assert "krea_character_recurring_descriptors" in guidance_codes
+    assert "krea_caption_recipe_revision_mixed" in guidance_codes
+    assert "krea_character_trigger_missing" not in guidance_codes
+    assert handoff["outdated_caption_profile_count"] == 4
+    assert report["assessment"] == "REVIEW_RECOMMENDED"
+
+    missing_trigger = build_dataset_report(
+        records,
+        DatasetProfileRegistry().recipe("Krea 2", "Character", ""),
+        training_ready=True,
+    )
+    missing_codes = {item["code"] for item in missing_trigger["guidance"]["warnings"]}
+    assert "krea_character_trigger_missing" in missing_codes
+
+    summary = DatasetRunSummaryNode().summarize(json.dumps({
+        "training_ready": True,
+        "eligible": 4,
+        "complete": 4,
+        "pending": 0,
+        "processing": 0,
+        "failed": 0,
+        "excluded": 0,
+        "audit_valid": True,
+        "watermark_audit_complete": True,
+        "analysis_audit_complete": True,
+        "crop_audit_complete": True,
+        "dataset_report": report,
+        "issues": [],
+    }))["result"][0]
+    assert "Training target: Krea 2 Raw, 1024 buckets" in summary
+    assert "1024 bucket source coverage: 2/4" in summary
+    assert "Recurring caption descriptors (trigger-bleed review):" in summary
+    assert "long black hair: 4/4 captions (100.0%)" in summary
 
 
 def test_phase5_summary_node_is_registered():

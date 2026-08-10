@@ -676,6 +676,8 @@ class DatasetRunSummaryNode:
             captions = report.get("captions") or {}
             distribution = report.get("distribution") or {}
             naming = report.get("naming") or {}
+            training_handoff = report.get("training_handoff") or {}
+            guidance = report.get("guidance") or {}
             lines.extend([
                 "",
                 "DATASET REPORT",
@@ -705,6 +707,43 @@ class DatasetRunSummaryNode:
                     f"people in {int(distribution.get('person_visible_items', 0) or 0)}"
                 ),
             ])
+            target_resolution = training_handoff.get("target_bucket_resolution")
+            checkpoint = training_handoff.get("training_checkpoint")
+            if target_resolution or checkpoint:
+                target_parts = []
+                if checkpoint:
+                    target_parts.append(str(checkpoint))
+                if target_resolution:
+                    target_parts.append(f"{target_resolution} buckets")
+                lines.append("Training target: " + ", ".join(target_parts))
+            evaluated = int(training_handoff.get("evaluated_image_count", 0) or 0)
+            if target_resolution and evaluated:
+                at_target = int(
+                    training_handoff.get("at_or_above_target_area_count", 0) or 0
+                )
+                below_target = int(training_handoff.get("below_target_area_count", 0) or 0)
+                lines.append(
+                    f"{target_resolution} bucket source coverage: {at_target}/{evaluated} "
+                    f"at or above {target_resolution}² pixel area; {below_target} below target"
+                )
+
+            guidance_warnings = guidance.get("warnings") or []
+            if guidance_warnings:
+                lines.append("Training guidance:")
+                for warning in guidance_warnings:
+                    if isinstance(warning, dict):
+                        lines.append(f"- {warning.get('message', warning.get('code', 'Review recommended'))}")
+
+            recurrence = captions.get("recurrence") or {}
+            recurring_descriptors = recurrence.get("recurring_descriptors") or []
+            if recurring_descriptors:
+                lines.append("Recurring caption descriptors (trigger-bleed review):")
+                for item in recurring_descriptors[:5]:
+                    lines.append(
+                        f"- {item.get('text', 'unknown')}: "
+                        f"{int(item.get('count', 0) or 0)}/{int(recurrence.get('caption_count', 0) or 0)} "
+                        f"captions ({float(item.get('fraction', 0) or 0):.1%})"
+                    )
             mode_counts = naming.get("mode_counts") or {}
             if mode_counts:
                 lines.append(
