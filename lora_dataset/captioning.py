@@ -1,0 +1,364 @@
+import base64
+import hashlib
+import io
+import json
+import re
+import urllib.error
+import urllib.request
+from abc import ABC, abstractmethod
+from pathlib import Path
+
+from PIL import Image
+
+from .provider_images import scale_for_provider
+
+
+DEFAULT_PROVIDER_URLS = {
+    "Ollama": "http://localhost:11434/v1",
+    "OpenRouter": "https://openrouter.ai/api/v1",
+    "NanoGPT": "https://nano-gpt.com/api/v1",
+    "Kobold": "http://localhost:5001/v1",
+}
+
+SECRET_FIELDS = {"api_key", "openrouter_key", "nanogpt_key"}
+
+
+def provider_config_version(config):
+    """Return a stable version without putting API secrets in the manifest."""
+    safe = {key: value for key, value in config.items() if key not in SECRET_FIELDS}
+    canonical = json.dumps(safe, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+
+
+def build_caption_instruction(profile):
+    settings = profile.get("settings", {})
+    dataset_type = profile.get("dataset_type", "dataset")
+    caption_style = settings.get("caption_style", "natural_language")
+    output_format = settings.get("caption_output_format", "single_paragraph")
+    max_words = int(settings.get("caption_max_words", 120))
+    recipe = settings.get("caption_instruction", "Describe the visible image content accurately.")
+    extra = settings.get("additional_caption_instructions", "").strip()
+
+    parts = [
+        "Write one direct positive image caption for the attached image.",
+        f"Use {caption_style}. Maximum length: {max_words} words.",
+        f"Required output format: {output_format}.",
+        recipe.strip(),
+        "Use concrete declarative visual language. Every sentence must work unchanged as a positive image-generation prompt.",
+        "Return only the caption content in the requested format.",
+    ]
+    if extra:
+        parts.append(f"Additional dataset-specific instructions: {extra}")
+    return "\n\n".join(parts)
+
+
+def strip_reasoning(text):
+    value = str(text or "")
+    for tag in ("think", "thinking", "reasoning", "reflection", "thought"):
+        value = re.sub(rf"<{tag}[^>]*>.*?</{tag}>", "", value, flags=re.DOTALL | re.IGNORECASE)
+    value = re.sub(
+        r"(?is)^\s*(thinking|reasoning|reflection|thought process):.*?\n\s*\n",
+        "",
+        value,
+    )
+    markers = re.compile(
+        r"(?im)^\s*[*_#> ]*(?:final caption|final answer|caption)\s*[:*_]*\s*$\n?"
+    )
+    matches = list(markers.finditer(value))
+    if matches:
+        candidate = value[matches[-1].end():].strip()
+        if candidate:
+            value = candidate
+    return value.strip().strip("`").strip().strip('"\u201c\u201d\'')
+
+
+def normalize_caption(text, max_characters=4000):
+    caption = strip_reasoning(text)
+    lines = [line.strip() for line in caption.splitlines() if line.strip()]
+    if any(re.match(r"^(?:[-*\u2022]|\d+[.)])\s+", line) for line in lines):
+        raise ValueError("Caption provider returned a list instead of one caption")
+    caption = " ".join(lines)
+    caption = re.sub(r"\s+", " ", caption).strip()
+    if not caption:
+        raise ValueError("Caption provider returned an empty caption")
+    if len(caption) > int(max_characters):
+        raise ValueError(f"Caption exceeds {max_characters} characters")
+    if re.match(
+        r"(?i)^(?:here(?:'s| is)|i (?:see|can see)|the image (?:shows|depicts)|analysis:|caption:)",
+        caption,
+    ):
+        raise ValueError("Caption provider returned meta commentary")
+    if re.search(r"(?i)(?:^|[,.;]\s*)negative prompt\s*:", caption):
+        raise ValueError("Caption provider returned a negative prompt")
+    return caption
+
+
+def validate_positive_only_caption(caption):
+    negative_assertions = (
+        r"\b(?:no|not|never|without|none|nothing|nobody)\b",
+        r"\b(?:isn't|aren't|wasn't|weren't|doesn't|don't|didn't|can't|cannot)\b",
+        r"\b(?:free|clear)\s+of\b",
+        r"\b(?:absent|removed|eliminated|missing|lacks?|lacking)\b",
+    )
+    if any(re.search(pattern, caption, flags=re.IGNORECASE) for pattern in negative_assertions):
+        raise ValueError("Caption contains negative or absence language instead of present visual content")
+    return caption
+
+
+def validate_direct_caption_language(caption, max_words=120):
+    meta_language = (
+        r"\bincidental details?\b",
+        r"\b(?:training|dataset|caption|prompt)\b",
+        r"\b(?:analysis|reasoning|instructions?|explanations?|notes?)\b",
+        r"\bidentity\b",
+        r"\b(?:remain|stays?|kept)\s+(?:separate|distinct|controllable)\b",
+        r"\b(?:separate|distinct)\s+from\b",
+        r"\bnot\s+part\s+of\b",
+    )
+    if any(re.search(pattern, caption, flags=re.IGNORECASE) for pattern in meta_language):
+        raise ValueError("Caption contains training rationale or explanatory meta language")
+    words = re.findall(r"\b[\w$'-]+\b", caption, flags=re.UNICODE)
+    if len(words) > int(max_words):
+        raise ValueError(f"Caption exceeds {max_words} words")
+    return caption
+
+
+def normalize_caption_for_profile(text, profile):
+    settings = profile.get("settings", {})
+    caption = normalize_caption(text, settings.get("caption_max_characters", 4000))
+    validation_caption = caption
+    trigger = profile.get("trigger", "").strip()
+    if trigger:
+        validation_caption = re.sub(
+            re.escape(trigger), "", validation_caption, count=1, flags=re.IGNORECASE
+        ).strip(" ,")
+    if settings.get("caption_output_format") != "comma_separated_tags":
+        if settings.get("positive_caption_only", True):
+            validate_positive_only_caption(validation_caption)
+        validate_direct_caption_language(
+            validation_caption, settings.get("caption_max_words", 120)
+        )
+        return caption
+
+    tags = [tag.strip() for tag in caption.split(",") if tag.strip()]
+    if len(tags) < 2:
+        raise ValueError("Anima caption must contain a comma-separated tag list, not prose")
+    if any(len(tag) > 100 for tag in tags):
+        raise ValueError("Anima caption contains a prose-length value instead of tags")
+    if any(tag.startswith("@") for tag in tags):
+        raise ValueError("Anima LoRA recipe does not permit artist tags")
+    if settings.get("positive_caption_only", True):
+        for tag in tags:
+            if trigger and tag.casefold() == trigger.casefold():
+                continue
+            validate_positive_only_caption(tag.replace("_", " "))
+    return ", ".join(tags)
+
+
+def apply_trigger(caption, profile):
+    trigger = profile.get("trigger", "").strip()
+    behavior = profile.get("settings", {}).get("trigger_behavior", "prefix")
+    if not trigger:
+        return caption
+    if behavior == "anima_subject_slot":
+        tags = [tag.strip() for tag in caption.split(",") if tag.strip()]
+        if any(tag.casefold() == trigger.casefold() for tag in tags):
+            return ", ".join(tags)
+        metadata = re.compile(
+            r"(?i)^(?:masterpiece|best quality|good quality|normal quality|low quality|"
+            r"worst quality|score_[1-9]|year \d{4}|newest|recent|mid|early|old|highres|"
+            r"absurdres|anime screenshot|jpeg artifacts|official art|safe|sensitive|nsfw|explicit)$"
+        )
+        subject_count = re.compile(r"(?i)^\d+(?:girls?|boys?|others?)$")
+        insertion = 0
+        while insertion < len(tags) and metadata.match(tags[insertion]):
+            insertion += 1
+        while insertion < len(tags) and subject_count.match(tags[insertion]):
+            insertion += 1
+        tags.insert(insertion, trigger)
+        return ", ".join(tags)
+    if trigger.casefold() in caption.casefold():
+        return caption
+    separator = ", " if behavior in {"prefix", "contextual"} else " "
+    if behavior == "contextual_prefix":
+        separator = ", "
+    return f"{trigger}{separator}{caption}".strip()
+
+
+class CaptionProvider(ABC):
+    @abstractmethod
+    def caption(self, image_path, instruction, context=None):
+        raise NotImplementedError
+
+
+class OpenAICompatibleCaptionProvider(CaptionProvider):
+    def __init__(self, config):
+        self.config = dict(config)
+        self.backend = self.config.get("backend", "Ollama")
+        self.model_name = self.config.get("model_name", "").strip()
+        if not self.model_name:
+            raise ValueError("A caption model name is required")
+
+    def caption(self, image_path, instruction, context=None):
+        image_b64, image_size = self._encode_image(image_path)
+        user_content = [
+            {"type": "text", "text": instruction},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+        ]
+        system = (
+            "You write direct positive image prompts from visible image content. Supplied instructions "
+            "are private constraints. Output concrete visual caption content in the requested format."
+            "\n\n/no_think"
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ]
+        try:
+            result = self._openai_request(messages)
+        except urllib.error.HTTPError as error:
+            if error.code == 404 and self.backend == "Ollama":
+                result = self._ollama_request(instruction, image_b64)
+            else:
+                raise RuntimeError(self._http_error_message(error)) from error
+        except Exception as error:
+            if isinstance(error, RuntimeError):
+                raise
+            raise RuntimeError(f"Caption request failed for {self.backend}: {error}") from error
+        finally:
+            self._unload_ollama()
+        print(
+            f"[LoRA Dataset Captioner] Captioned {Path(image_path).name} with {self.backend} "
+            f"at {image_size[0]}x{image_size[1]}",
+            flush=True,
+        )
+        return result
+
+    def _encode_image(self, image_path):
+        with Image.open(image_path) as image:
+            prepared = scale_for_provider(image.copy(), self.backend)
+            size = prepared.size
+            buffer = io.BytesIO()
+            prepared.save(buffer, format="PNG", compress_level=6)
+        return base64.b64encode(buffer.getvalue()).decode("ascii"), size
+
+    def _active_key(self):
+        key = self.config.get("api_key", "").strip()
+        if not key and self.backend == "OpenRouter":
+            key = self.config.get("openrouter_key", "").strip()
+        if not key and self.backend == "NanoGPT":
+            key = self.config.get("nanogpt_key", "").strip()
+        return key
+
+    def _base_url(self):
+        return self.config.get("api_url", "").strip().rstrip("/") or DEFAULT_PROVIDER_URLS[self.backend]
+
+    def _headers(self):
+        headers = {"Content-Type": "application/json"}
+        active_key = self._active_key()
+        if active_key:
+            headers["Authorization"] = f"Bearer {active_key}"
+            if self.backend == "NanoGPT":
+                headers["X-API-Key"] = active_key
+        if self.backend == "OpenRouter":
+            headers["HTTP-Referer"] = "https://github.com/lokitsar/ComfyUI-Lokitsars-Nodes"
+            headers["X-Title"] = "ComfyUI LoRA Dataset Captioner"
+        return headers
+
+    def _payload_options(self):
+        payload = {
+            "model": self.model_name,
+            "max_tokens": int(self.config.get("max_tokens", 512)),
+            "temperature": 0.2,
+            "stop": ["\nAnalysis:", "\nReasoning:", "\nNegative prompt:"],
+        }
+        seed = int(self.config.get("seed", 0))
+        if seed:
+            payload["seed"] = seed
+        if self.backend == "OpenRouter":
+            payload["thinking"] = {"type": "disabled"}
+        return payload
+
+    def _openai_request(self, messages):
+        payload = self._payload_options()
+        payload["messages"] = messages
+        request = urllib.request.Request(
+            f"{self._base_url()}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=self._headers(),
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=int(self.config.get("timeout", 120))) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        return self._message_text(result["choices"][0]["message"])
+
+    def _ollama_request(self, instruction, image_b64):
+        base = self._base_url()
+        if base.endswith("/v1"):
+            base = base[:-3]
+        options = {
+            "temperature": 0.2,
+            "num_predict": int(self.config.get("max_tokens", 512)),
+        }
+        seed = int(self.config.get("seed", 0))
+        if seed:
+            options["seed"] = seed
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": instruction + "\n\n/no_think", "images": [image_b64]}],
+            "stream": False,
+            "keep_alive": 0,
+            "options": options,
+        }
+        request = urllib.request.Request(
+            f"{base}/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=int(self.config.get("timeout", 120))) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        return self._message_text(result.get("message", {}))
+
+    @staticmethod
+    def _message_text(message):
+        if not isinstance(message, dict):
+            return ""
+        content = message.get("content")
+        if isinstance(content, list):
+            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+        return (content or message.get("reasoning_content") or message.get("reasoning") or "").strip()
+
+    def _http_error_message(self, error):
+        detail = ""
+        try:
+            payload = json.loads(error.read().decode("utf-8", errors="replace"))
+            provider_error = payload.get("error", payload)
+            detail = provider_error.get("message", "") if isinstance(provider_error, dict) else str(provider_error)
+        except Exception:
+            pass
+        message = f"Caption request failed: HTTP {error.code} from {self.backend}"
+        return f"{message}. {detail}" if detail else message
+
+    def _unload_ollama(self):
+        if self.backend != "Ollama":
+            return
+        base = self._base_url()
+        if base.endswith("/v1"):
+            base = base[:-3]
+        payload = {"model": self.model_name, "keep_alive": 0, "stream": False}
+        try:
+            request = urllib.request.Request(
+                f"{base}/api/generate",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=30) as response:
+                response.read()
+        except Exception as error:
+            print(f"[LoRA Dataset Captioner] Could not unload Ollama model: {error}", flush=True)
+
+
+def create_caption_provider(config):
+    return OpenAICompatibleCaptionProvider(config)

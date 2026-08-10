@@ -1,0 +1,34 @@
+[project]
+name = "lora-dataset-caption-suite"
+version = "0.1.0"
+description = "Automated, resumable LoRA dataset cleanup, captioning, cropping, validation, and reporting for ComfyUI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "lokitsar" }
+]
+keywords = [
+    "comfyui",
+    "lora",
+    "dataset",
+    "captioning",
+    "flux-krea",
+    "anima",
+    "klein"
+]
+dependencies = [
+    "aiohttp>=3.9.0",
+    "numpy>=1.24.0",
+    "Pillow>=10.0.0",
+    "ultralytics>=8.3.0"
+]
+
+[project.urls]
+Repository = "https://github.com/lokitsar/Lora-Dataset-Caption-Suite"
+Issues = "https://github.com/lokitsar/Lora-Dataset-Caption-Suite/issues"
+
+[tool.comfy]
+PublisherId = "lokitsar"
+DisplayName = "LoRA Dataset Caption Suite"
+Icon = "🗂️"

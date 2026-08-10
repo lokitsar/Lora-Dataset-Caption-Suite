@@ -1,0 +1,292 @@
+{
+  "id": "7d02dbb7-1631-46e9-a734-00e27543b78f",
+  "revision": 0,
+  "last_node_id": 10,
+  "last_link_id": 9,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoraDatasetSource",
+      "pos": [0, 0],
+      "size": [420, 90],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {"name": "source_directory", "type": "STRING", "widget": {"name": "source_directory"}, "link": null},
+        {"name": "recursive", "type": "BOOLEAN", "widget": {"name": "recursive"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "source", "type": "LORA_DATASET_SOURCE", "slot_index": 0, "links": [1]},
+        {"name": "status", "type": "STRING", "links": null}
+      ],
+      "title": "1 — Source Images",
+      "properties": {"Node name for S&R": "LoraDatasetSource"},
+      "widgets_values": ["", true]
+    },
+    {
+      "id": 2,
+      "type": "LoraDatasetProfile",
+      "pos": [0, 150],
+      "size": [420, 280],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "training_model", "type": "COMBO", "widget": {"name": "training_model"}, "link": null},
+        {"name": "dataset_type", "type": "COMBO", "widget": {"name": "dataset_type"}, "link": null},
+        {"name": "trigger", "type": "STRING", "widget": {"name": "trigger"}, "link": null},
+        {"name": "additional_caption_instructions", "type": "STRING", "widget": {"name": "additional_caption_instructions"}, "link": null},
+        {"name": "advanced_overrides", "type": "STRING", "widget": {"name": "advanced_overrides"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "profile", "type": "LORA_DATASET_PROFILE", "slot_index": 0, "links": [2]},
+        {"name": "profile_json", "type": "STRING", "links": null}
+      ],
+      "title": "2 — Dataset Recipe",
+      "properties": {"Node name for S&R": "LoraDatasetProfile"},
+      "widgets_values": ["Krea 2", "Character", "", "", "{}"]
+    },
+    {
+      "id": 3,
+      "type": "LoraDatasetCaptionProvider",
+      "pos": [480, 0],
+      "size": [460, 430],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "backend", "type": "COMBO", "widget": {"name": "backend"}, "link": null},
+        {"name": "api_url", "type": "STRING", "widget": {"name": "api_url"}, "link": null},
+        {"name": "api_key", "type": "STRING", "widget": {"name": "api_key"}, "link": null},
+        {"name": "openrouter_key", "type": "STRING", "widget": {"name": "openrouter_key"}, "link": null},
+        {"name": "nanogpt_key", "type": "STRING", "widget": {"name": "nanogpt_key"}, "link": null},
+        {"name": "model_name", "type": "STRING", "widget": {"name": "model_name"}, "link": null},
+        {"name": "max_tokens", "type": "INT", "widget": {"name": "max_tokens"}, "link": null},
+        {"name": "seed", "type": "INT", "widget": {"name": "seed"}, "link": null},
+        {"name": "timeout", "type": "INT", "widget": {"name": "timeout"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "caption_provider", "type": "LORA_CAPTION_PROVIDER", "slot_index": 0, "links": [3]},
+        {"name": "provider_status", "type": "STRING", "links": null}
+      ],
+      "title": "3 — Caption Provider",
+      "properties": {"Node name for S&R": "LoraDatasetCaptionProvider"},
+      "widgets_values": ["Ollama", "", "", "", "", "llama3.2-vision", 512, 0, 120]
+    },
+    {
+      "id": 4,
+      "type": "LoraDatasetKleinCleanupProvider",
+      "pos": [1000, 0],
+      "size": [500, 390],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "diffusion_model", "type": "COMBO", "widget": {"name": "diffusion_model"}, "link": null},
+        {"name": "text_encoder", "type": "COMBO", "widget": {"name": "text_encoder"}, "link": null},
+        {"name": "vae", "type": "COMBO", "widget": {"name": "vae"}, "link": null},
+        {"name": "cleanup_prompt", "type": "STRING", "widget": {"name": "cleanup_prompt"}, "link": null},
+        {"name": "steps", "type": "INT", "widget": {"name": "steps"}, "link": null},
+        {"name": "seed", "type": "INT", "widget": {"name": "seed"}, "link": null},
+        {"name": "megapixels", "type": "FLOAT", "widget": {"name": "megapixels"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "cleanup_provider", "type": "LORA_CLEANUP_PROVIDER", "slot_index": 0, "links": [4]},
+        {"name": "cleanup_status", "type": "STRING", "links": null}
+      ],
+      "title": "4 — Klein Cleanup",
+      "properties": {"Node name for S&R": "LoraDatasetKleinCleanupProvider"},
+      "widgets_values": [
+        "flux-2-klein-9b.safetensors",
+        "qwen_3_8b_fp8mixed.safetensors",
+        "flux2-vae.safetensors",
+        "Remove every visible watermark, logo, signature, username, URL, timestamp, stock-photo mark, caption, sticker, interface element, and overlaid text. Reconstruct only the pixels hidden by those additions using the surrounding image context. Preserve everything else exactly: subject identity, facial features, anatomy, pose, expression, clothing, objects, background, composition, crop, perspective, lighting, color, texture, sharpness, and visual style. Do not add, beautify, restyle, reframe, or alter any other content. If no removable overlay is present, keep the image visually unchanged.",
+        4,
+        0,
+        1.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "LoraDatasetCleanupVerifier",
+      "pos": [1000, 450],
+      "size": [500, 300],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "watermark_model", "type": "COMBO", "widget": {"name": "watermark_model"}, "link": null},
+        {"name": "confidence", "type": "FLOAT", "widget": {"name": "confidence"}, "link": null},
+        {"name": "image_size", "type": "INT", "widget": {"name": "image_size"}, "link": null},
+        {"name": "device", "type": "COMBO", "widget": {"name": "device"}, "link": null},
+        {"name": "minimum_structural_similarity", "type": "FLOAT", "widget": {"name": "minimum_structural_similarity"}, "link": null},
+        {"name": "maximum_mean_absolute_difference", "type": "FLOAT", "widget": {"name": "maximum_mean_absolute_difference"}, "link": null},
+        {"name": "maximum_changed_area_fraction", "type": "FLOAT", "widget": {"name": "maximum_changed_area_fraction"}, "link": null},
+        {"name": "pixel_change_threshold", "type": "FLOAT", "widget": {"name": "pixel_change_threshold"}, "link": null},
+        {"name": "maximum_aspect_ratio_delta", "type": "FLOAT", "widget": {"name": "maximum_aspect_ratio_delta"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "cleanup_verifier", "type": "LORA_CLEANUP_VERIFIER", "slot_index": 0, "links": [5]},
+        {"name": "verification_status", "type": "STRING", "links": null}
+      ],
+      "title": "5 — Cleanup Verification",
+      "properties": {"Node name for S&R": "LoraDatasetCleanupVerifier"},
+      "widgets_values": ["bbox/watermark.pt", 0.2, 640, "cpu", 0.72, 0.12, 0.2, 0.3, 0.02]
+    },
+    {
+      "id": 6,
+      "type": "LoraDatasetImageAnalyzer",
+      "pos": [480, 490],
+      "size": [460, 180],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "subject_model", "type": "COMBO", "widget": {"name": "subject_model"}, "link": null},
+        {"name": "face_model", "type": "COMBO", "widget": {"name": "face_model"}, "link": null},
+        {"name": "confidence", "type": "FLOAT", "widget": {"name": "confidence"}, "link": null},
+        {"name": "image_size", "type": "INT", "widget": {"name": "image_size"}, "link": null},
+        {"name": "device", "type": "COMBO", "widget": {"name": "device"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "analysis_provider", "type": "LORA_ANALYSIS_PROVIDER", "slot_index": 0, "links": [6]},
+        {"name": "analysis_status", "type": "STRING", "links": null}
+      ],
+      "title": "6 — Image Analysis",
+      "properties": {"Node name for S&R": "LoraDatasetImageAnalyzer"},
+      "widgets_values": ["bbox/yolov8s.pt", "bbox/face_yolov8n.pt", 0.3, 640, "cpu"]
+    },
+    {
+      "id": 7,
+      "type": "LoraDatasetSmartCropProvider",
+      "pos": [480, 720],
+      "size": [460, 80],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "minimum_output_dimension", "type": "INT", "widget": {"name": "minimum_output_dimension"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "crop_provider", "type": "LORA_CROP_PROVIDER", "slot_index": 0, "links": [7]},
+        {"name": "crop_status", "type": "STRING", "links": null}
+      ],
+      "title": "7 — Smart Crop",
+      "properties": {"Node name for S&R": "LoraDatasetSmartCropProvider"},
+      "widgets_values": [512]
+    },
+    {
+      "id": 8,
+      "type": "LoraDatasetBuilder",
+      "pos": [1580, 0],
+      "size": [520, 390],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "source", "type": "LORA_DATASET_SOURCE", "link": 1},
+        {"name": "profile", "type": "LORA_DATASET_PROFILE", "link": 2},
+        {"name": "destination_directory", "type": "STRING", "widget": {"name": "destination_directory"}, "link": null},
+        {"name": "run_mode", "type": "COMBO", "widget": {"name": "run_mode"}, "link": null},
+        {"name": "force_rebuild_revision", "type": "INT", "widget": {"name": "force_rebuild_revision"}, "link": null},
+        {"name": "output_naming_mode", "type": "COMBO", "widget": {"name": "output_naming_mode"}, "link": null},
+        {"name": "lora_name", "type": "STRING", "widget": {"name": "lora_name"}, "link": null},
+        {"name": "caption_provider", "type": "LORA_CAPTION_PROVIDER", "link": 3},
+        {"name": "cleanup_provider", "type": "LORA_CLEANUP_PROVIDER", "link": 4},
+        {"name": "cleanup_verifier", "type": "LORA_CLEANUP_VERIFIER", "link": 5},
+        {"name": "analysis_provider", "type": "LORA_ANALYSIS_PROVIDER", "link": 6},
+        {"name": "crop_provider", "type": "LORA_CROP_PROVIDER", "link": 7}
+      ],
+      "outputs": [
+        {"name": "status_json", "type": "STRING", "slot_index": 0, "links": [8, 9]},
+        {"name": "manifest_path", "type": "STRING", "links": null}
+      ],
+      "title": "BUILD DATASET",
+      "properties": {"Node name for S&R": "LoraDatasetBuilder"},
+      "widgets_values": ["", "resume", 0, "preserve_source_names", ""]
+    },
+    {
+      "id": 9,
+      "type": "LoraDatasetRunSummary",
+      "pos": [1580, 460],
+      "size": [540, 580],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [{"name": "status_json", "type": "STRING", "link": 8}],
+      "outputs": [
+        {"name": "summary", "type": "STRING", "links": null},
+        {"name": "issues_json", "type": "STRING", "links": null},
+        {"name": "report_json", "type": "STRING", "links": null}
+      ],
+      "title": "Human-readable Run Summary",
+      "properties": {"Node name for S&R": "LoraDatasetRunSummary"},
+      "widgets_values": []
+    },
+    {
+      "id": 10,
+      "type": "LoraDatasetAppReport",
+      "pos": [2200, 0],
+      "size": [520, 500],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [{"name": "status_json", "type": "STRING", "link": 9}],
+      "outputs": [{"name": "summary", "type": "STRING", "links": null}],
+      "title": "Dataset Report — App Output",
+      "properties": {"Node name for S&R": "LoraDatasetAppReport"},
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [1, 1, 0, 8, 0, "LORA_DATASET_SOURCE"],
+    [2, 2, 0, 8, 1, "LORA_DATASET_PROFILE"],
+    [3, 3, 0, 8, 7, "LORA_CAPTION_PROVIDER"],
+    [4, 4, 0, 8, 8, "LORA_CLEANUP_PROVIDER"],
+    [5, 5, 0, 8, 9, "LORA_CLEANUP_VERIFIER"],
+    [6, 6, 0, 8, 10, "LORA_ANALYSIS_PROVIDER"],
+    [7, 7, 0, 8, 11, "LORA_CROP_PROVIDER"],
+    [8, 8, 0, 9, 0, "STRING"],
+    [9, 8, 0, 10, 0, "STRING"]
+  ],
+  "groups": [
+    {"id": 1, "title": "Simple App Inputs", "bounding": [-40, -60, 460, 550], "color": "#3f789e", "font_size": 24, "flags": {}},
+    {"id": 2, "title": "Provider Configuration", "bounding": [440, -60, 1100, 920], "color": "#8A6A3D", "font_size": 24, "flags": {}},
+    {"id": 3, "title": "Stateful Backend + Reports", "bounding": [1540, -60, 1220, 1140], "color": "#4F7A55", "font_size": 24, "flags": {}}
+  ],
+  "config": {},
+  "extra": {
+    "ds": {"scale": 0.62, "offset": [120, 100]},
+    "frontendVersion": "1.48.7",
+    "linearMode": true,
+    "linearData": {
+      "inputs": [
+        [1, "source_directory", {"description": "Folder containing the original images."}],
+        [1, "recursive", {"description": "Include images in subfolders."}],
+        [8, "destination_directory", {"description": "Project output folder containing dataset, manifest, review, and reports."}],
+        [2, "training_model", {"description": "Caption and validation recipe. Initially Krea 2 or Anima."}],
+        [2, "dataset_type", {"description": "Character, Style, or Concept."}],
+        [2, "trigger", {"description": "LoRA trigger token or phrase."}],
+        [2, "additional_caption_instructions", {"height": 110, "description": "Optional instructions for an unusual dataset."}],
+        [8, "run_mode", {"description": "Resume new/changed items, retry failures, or intentionally rebuild."}],
+        [8, "force_rebuild_revision", {"description": "Use a new positive revision only for an intentional force rebuild."}],
+        [8, "output_naming_mode", {"description": "Keep source basenames or use stable clean LoRA numbering."}],
+        [8, "lora_name", {"description": "Required for numbered naming, for example taarna."}],
+        [3, "backend", {"description": "Caption API provider."}],
+        [3, "api_url", {"description": "Leave blank for the provider default."}],
+        [3, "api_key", {"description": "Optional API key. Saving the workflow also saves this widget value."}],
+        [3, "caption_provider_models", {"height": 100, "description": "Connect to the selected API and choose one of its available models."}],
+        [3, "model_name", {"description": "Vision-capable caption model exposed by the selected API."}],
+        [4, "diffusion_model", {"description": "Installed Klein 9B diffusion model."}],
+        [4, "text_encoder", {"description": "Installed Klein text encoder."}],
+        [4, "vae", {"description": "Installed Klein VAE."}],
+        [5, "watermark_model", {"description": "Local watermark detector used for cleanup verification."}],
+        [6, "subject_model", {"description": "Local subject detector used for safe cropping."}],
+        [6, "face_model", {"description": "Local face detector used for identity preservation."}]
+      ],
+      "outputs": [10]
+    }
+  },
+  "version": 0.4
+}

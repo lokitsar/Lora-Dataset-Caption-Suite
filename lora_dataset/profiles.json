@@ -1,0 +1,160 @@
+{
+  "schema_version": 5,
+  "models": {
+    "krea2": {
+      "display_name": "Krea 2",
+      "research_basis": [
+        "https://github.com/krea-ai/krea-2/blob/main/docs/prompting.md",
+        "https://www.krea.ai/blog/krea-2-technical-report",
+        "https://www.krea.ai/blog/krea-2-lora-training"
+      ],
+      "defaults": {
+        "caption_style": "concise_natural_language",
+        "caption_output_format": "single_paragraph",
+        "caption_max_characters": 1800,
+        "caption_max_words": 120,
+        "positive_caption_only": true,
+        "preferred_resolutions": [1024],
+        "allowed_aspect_ratios": ["1:1", "3:4", "4:3", "9:16", "16:9"],
+        "crop_aspect_tolerance": 0.035,
+        "crop_subject_padding_fraction": 0.06,
+        "training_checkpoint": "Krea 2 Raw",
+        "trigger_required": false,
+        "exclude_exact_duplicates": true,
+        "near_duplicate_maximum_hamming_distance": 6,
+        "quality_minimum_dimension": 512,
+        "quality_minimum_megapixels": 0.35,
+        "quality_dark_threshold": 22,
+        "quality_bright_threshold": 238,
+        "quality_low_contrast_threshold": 18,
+        "quality_low_sharpness_threshold": 1.5
+      },
+      "datasets": {
+        "character": {
+          "trigger_behavior": "contextual_prefix",
+          "crop_strategy": "identity_preserving",
+          "crop_max_removed_fraction": 0.35,
+          "caption_max_words": 110,
+          "caption_instruction": "Describe the visible subject using concise natural language. Prioritize pose, expression, gaze, framing, hair, clothing, accessories, lighting, and setting. Use concrete visual statements and keep background details brief.",
+          "caption": {
+            "describe_identity": false,
+            "describe_clothing": true,
+            "describe_pose": true,
+            "describe_camera": true,
+            "describe_background": true,
+            "describe_lighting": true,
+            "describe_style": false
+          }
+        },
+        "style": {
+          "trigger_behavior": "prefix",
+          "crop_strategy": "composition_preserving",
+          "crop_max_removed_fraction": 0.12,
+          "caption_max_words": 120,
+          "caption_instruction": "Describe the visible subject matter, composition, spatial layout, objects, setting, lighting, color relationships, and camera or rendering medium using concise natural language and concrete visual statements.",
+          "caption": {
+            "describe_subject": true,
+            "describe_composition": true,
+            "describe_environment": true,
+            "describe_lighting": true,
+            "describe_color_relationships": true,
+            "describe_style": false
+          }
+        },
+        "concept": {
+          "trigger_behavior": "contextual_prefix",
+          "crop_strategy": "semantic",
+          "crop_max_removed_fraction": 0.25,
+          "caption_max_words": 110,
+          "caption_instruction": "Clearly describe the visible subjects, action, pose, objects, camera framing, spatial relationships, direction, and interaction. Make the depicted interaction unambiguous and keep clothing and background details brief.",
+          "caption": {
+            "describe_subject": true,
+            "describe_action": true,
+            "describe_relationships": true,
+            "describe_camera": true,
+            "describe_environment": true
+          }
+        }
+      }
+    },
+    "anima": {
+      "display_name": "Anima",
+      "research_basis": [
+        "https://huggingface.co/circlestone-labs/Anima/blob/main/README.md"
+      ],
+      "defaults": {
+        "caption_style": "anima_danbooru_tags",
+        "caption_output_format": "comma_separated_tags",
+        "caption_max_characters": 1400,
+        "caption_max_words": 120,
+        "positive_caption_only": true,
+        "preferred_resolutions": [1024],
+        "allowed_aspect_ratios": ["1:1", "3:4", "4:3", "9:16", "16:9"],
+        "crop_aspect_tolerance": 0.035,
+        "crop_subject_padding_fraction": 0.06,
+        "trigger_required": true,
+        "exclude_exact_duplicates": true,
+        "near_duplicate_maximum_hamming_distance": 6,
+        "quality_minimum_dimension": 512,
+        "quality_minimum_megapixels": 0.35,
+        "quality_dark_threshold": 22,
+        "quality_bright_threshold": 238,
+        "quality_low_contrast_threshold": 18,
+        "quality_low_sharpness_threshold": 1.5,
+        "official_tag_order": [
+          "quality_meta_year_safety",
+          "subject_count",
+          "character",
+          "series",
+          "artist",
+          "general"
+        ]
+      },
+      "datasets": {
+        "character": {
+          "trigger_behavior": "anima_subject_slot",
+          "crop_strategy": "identity_preserving",
+          "crop_max_removed_fraction": 0.35,
+          "caption_instruction": "Return one concise comma-separated Anima/Danbooru tag list in native order: optional quality/meta/year/safety tags, subject-count tags such as 1girl or 1boy, then general visible tags. Tag salient clothing, pose, expression, gaze, hair, accessories, framing, orientation, action, and background. Use lowercase tags separated by comma and space.",
+          "caption": {
+            "format": "tags",
+            "describe_identity": false,
+            "describe_clothing": true,
+            "describe_pose": true,
+            "describe_expression": true,
+            "describe_background": true,
+            "omit_character_series_artist": true
+          }
+        },
+        "style": {
+          "trigger_behavior": "anima_subject_slot",
+          "crop_strategy": "composition_preserving",
+          "crop_max_removed_fraction": 0.12,
+          "caption_instruction": "Return one concise comma-separated Anima/Danbooru tag list in native order. Tag subject count, visible subjects, clothing, actions, composition, viewpoint, setting, objects, lighting, palette, and background. Use lowercase tags separated by comma and space.",
+          "caption": {
+            "format": "tags",
+            "describe_subject": true,
+            "describe_composition": true,
+            "describe_environment": true,
+            "describe_style": false,
+            "omit_character_series_artist": true
+          }
+        },
+        "concept": {
+          "trigger_behavior": "anima_subject_slot",
+          "crop_strategy": "semantic",
+          "crop_max_removed_fraction": 0.25,
+          "caption_instruction": "Return one concise comma-separated Anima/Danbooru tag list in native order. Tag subject count and the visible subjects, action, pose, objects, direction, framing, and relationships needed to describe the depicted interaction. Add only salient clothing and background tags. Use lowercase tags separated by comma and space.",
+          "caption": {
+            "format": "tags",
+            "describe_subject": true,
+            "describe_action": true,
+            "describe_relationships": true,
+            "describe_environment": true,
+            "omit_character_series_artist": true
+          }
+        }
+      }
+    }
+  }
+}
