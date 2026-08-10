@@ -7,7 +7,7 @@ from lora_dataset.engine import DatasetEngine
 from lora_dataset.path_utils import is_within, normalized_path
 from lora_dataset.profile import DatasetProfileRegistry
 from lora_dataset.provider_images import scale_for_provider
-from lora_dataset.sidecar import DatasetSidecarWriter
+from lora_dataset.sidecar import DatasetSidecarWriter, sidecar_stem
 
 
 def make_image(path, color=(20, 40, 60), size=(32, 24)):
@@ -32,6 +32,11 @@ def test_sidecar_writer_preserves_basename_and_has_no_numbered_duplicates(tmp_pa
     writer.write("third", "great photo.webp", tmp_path, "overwrite")
     assert target.read_text(encoding="utf-8") == "third"
     assert list(tmp_path.glob("great photo*.txt")) == [target]
+
+
+def test_sidecar_stem_accepts_windows_and_posix_paths_on_any_host():
+    assert sidecar_stem(r"H:\input\great photo.webp") == "great photo"
+    assert sidecar_stem("/mnt/input/great photo.webp") == "great photo"
 
 
 def test_paths_are_normalized_without_cross_root_relative_math(tmp_path):

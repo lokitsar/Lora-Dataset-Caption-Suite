@@ -14,7 +14,10 @@ _WINDOWS_RESERVED_FILENAME = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?
 
 
 def sidecar_stem(filename):
-    name = Path(str(filename)).name
+    # Source manifests can contain paths written on a different operating
+    # system. Normalize both separator styles before asking the host OS to
+    # interpret the basename.
+    name = str(filename).replace("\\", "/").rsplit("/", 1)[-1]
     path = Path(name)
     if path.suffix.lower() in IMAGE_EXTENSIONS:
         name = path.stem
