@@ -37,6 +37,7 @@ def status_payload():
         "watermark_audit_complete": True,
         "analysis_audit_complete": True,
         "crop_audit_complete": True,
+        "residual_detection_mode": "trust_klein",
         "dataset_report": {
             "assessment": "GOOD",
             "duplicates": {},
@@ -69,6 +70,7 @@ def test_app_report_node_returns_comfy_temp_image_descriptor(tmp_path, monkeypat
     )
     result = DatasetAppReportNode().display(json.dumps(status_payload()))
     assert "TRAINING READY" in result["result"][0]
+    assert "Watermark scan: disabled (trusting Klein)" in result["result"][0]
     descriptor = result["ui"]["images"][0]
     assert descriptor["type"] == "temp"
     assert descriptor["subfolder"] == ""
@@ -131,10 +133,12 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
     assert (8, "cleanup_override_images") in selected_widgets
     assert (3, "caption_provider_models") in selected_widgets
     assert (5, "confidence") in selected_widgets
+    assert (5, "residual_detection_mode") in selected_widgets
     verifier_node = next(
         node for node in workflow["nodes"] if node["type"] == "LoraDatasetCleanupVerifier"
     )
     assert verifier_node["widgets_values"][1] == 0.3
+    assert verifier_node["widgets_values"][-1] == "trust_klein"
     builder_node = next(
         node for node in workflow["nodes"] if node["type"] == "LoraDatasetBuilder"
     )

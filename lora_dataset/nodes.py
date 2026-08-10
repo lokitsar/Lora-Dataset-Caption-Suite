@@ -12,6 +12,8 @@ from .cleanup import (
 )
 from .cleanup_verification import (
     MINIMUM_WATERMARK_CONFIDENCE,
+    RESIDUAL_DETECTION_MODES,
+    VERIFICATION_SCHEMA_VERSION,
     cleanup_verifier_config_version,
     create_cleanup_verifier,
 )
@@ -363,6 +365,13 @@ class DatasetCleanupVerifierNode:
                     "FLOAT",
                     {"default": 0.02, "min": 0.0, "max": 0.5, "step": 0.005},
                 ),
+                "residual_detection_mode": (
+                    list(RESIDUAL_DETECTION_MODES),
+                    {
+                        "default": "trust_klein",
+                        "tooltip": "trust_klein skips residual text/watermark detection but keeps image-fidelity verification; verify_residual_watermarks enables the detector.",
+                    },
+                ),
             }
         }
 
@@ -382,6 +391,7 @@ class DatasetCleanupVerifierNode:
         maximum_changed_area_fraction,
         pixel_change_threshold,
         maximum_aspect_ratio_delta,
+        residual_detection_mode="trust_klein",
     ):
         config = {
             "provider": "ultralytics_cleanup_verifier",
@@ -394,10 +404,20 @@ class DatasetCleanupVerifierNode:
             "maximum_changed_area_fraction": float(maximum_changed_area_fraction),
             "pixel_change_threshold": float(pixel_change_threshold),
             "maximum_aspect_ratio_delta": float(maximum_aspect_ratio_delta),
-            "schema_version": 2,
+            "residual_detection_mode": (
+                residual_detection_mode
+                if residual_detection_mode in RESIDUAL_DETECTION_MODES
+                else "trust_klein"
+            ),
+            "schema_version": VERIFICATION_SCHEMA_VERSION,
         }
         version = cleanup_verifier_config_version(config)
-        return (config, f"Residual watermark + fidelity verification / config {version}")
+        mode_label = (
+            "Klein-trust + fidelity verification"
+            if config["residual_detection_mode"] == "trust_klein"
+            else "Residual watermark + fidelity verification"
+        )
+        return (config, f"{mode_label} / config {version}")
 
 
 class DatasetBuilderNode:
@@ -632,6 +652,13 @@ class DatasetRunSummaryNode:
                 f"crop={'pass' if status.get('crop_audit_complete') else 'fail'}"
             ),
         ]
+        residual_mode = str(status.get("residual_detection_mode") or "")
+        if residual_mode == "trust_klein":
+            lines.append(
+                "Watermark scan: disabled (trusting Klein); image-fidelity verification remains enabled."
+            )
+        elif residual_mode == "verify_residual_watermarks":
+            lines.append("Watermark scan: enabled; image-fidelity verification remains enabled.")
         if inactive:
             lines.append(
                 f"Inactive history: {inactive} source item(s); this does not block training readiness."

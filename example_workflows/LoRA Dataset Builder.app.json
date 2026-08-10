@@ -124,7 +124,8 @@
         {"name": "maximum_mean_absolute_difference", "type": "FLOAT", "widget": {"name": "maximum_mean_absolute_difference"}, "link": null},
         {"name": "maximum_changed_area_fraction", "type": "FLOAT", "widget": {"name": "maximum_changed_area_fraction"}, "link": null},
         {"name": "pixel_change_threshold", "type": "FLOAT", "widget": {"name": "pixel_change_threshold"}, "link": null},
-        {"name": "maximum_aspect_ratio_delta", "type": "FLOAT", "widget": {"name": "maximum_aspect_ratio_delta"}, "link": null}
+        {"name": "maximum_aspect_ratio_delta", "type": "FLOAT", "widget": {"name": "maximum_aspect_ratio_delta"}, "link": null},
+        {"name": "residual_detection_mode", "type": "COMBO", "widget": {"name": "residual_detection_mode"}, "link": null}
       ],
       "outputs": [
         {"name": "cleanup_verifier", "type": "LORA_CLEANUP_VERIFIER", "slot_index": 0, "links": [5]},
@@ -132,7 +133,7 @@
       ],
       "title": "5 — Cleanup Verification",
       "properties": {"Node name for S&R": "LoraDatasetCleanupVerifier"},
-      "widgets_values": ["bbox/watermark.pt", 0.3, 640, "cpu", 0.72, 0.12, 0.2, 0.3, 0.02]
+      "widgets_values": ["bbox/watermark.pt", 0.3, 640, "cpu", 0.72, 0.12, 0.2, 0.3, 0.02, "trust_klein"]
     },
     {
       "id": 6,
@@ -284,6 +285,7 @@
         [4, "text_encoder", {"description": "Installed Klein text encoder."}],
         [4, "vae", {"description": "Installed Klein VAE."}],
         [5, "watermark_model", {"description": "Local watermark detector used for cleanup verification."}],
+        [5, "residual_detection_mode", {"description": "Trust Klein and retain only image-fidelity verification, or optionally scan again for residual watermarks."}],
         [5, "confidence", {"description": "Minimum residual-watermark confidence. The default is 30%; raise it to reduce false positives."}],
         [6, "subject_model", {"description": "Local subject detector used for safe cropping."}],
         [6, "face_model", {"description": "Local face detector used for identity preservation."}]

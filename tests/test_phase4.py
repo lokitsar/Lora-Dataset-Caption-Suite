@@ -485,5 +485,14 @@ def test_phase4_verifier_is_an_optional_builder_provider():
     )
     assert config["schema_version"] == VERIFICATION_SCHEMA_VERSION
     assert config["confidence"] == 0.3
+    assert config["residual_detection_mode"] == "trust_klein"
     assert UltralyticsCleanupVerifier({"confidence": 0.2})._confidence_threshold() == 0.3
     assert UltralyticsCleanupVerifier({"confidence": 0.45})._confidence_threshold() == 0.45
+    trust_verifier = UltralyticsCleanupVerifier({
+        "watermark_model": "bbox/watermark.pt",
+        "residual_detection_mode": "trust_klein",
+    })
+    trust_verifier._load_model = lambda: (_ for _ in ()).throw(
+        AssertionError("trust_klein must not load the watermark model")
+    )
+    assert trust_verifier._detect("unused.png", Image.new("RGB", (32, 32))) == []

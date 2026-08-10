@@ -290,6 +290,11 @@ class DatasetEngine:
             "cleanup_review_items": report["cleanup_review_items"],
             "cleanup_excluded_items": report["cleanup_excluded_items"],
             "cleanup_override_applied_count": report["cleanup_override_applied_count"],
+            "residual_detection_mode": (
+                self.cleanup_verifier._residual_detection_mode()
+                if hasattr(self.cleanup_verifier, "_residual_detection_mode")
+                else "custom" if self.cleanup_verifier is not None else "disabled"
+            ),
             "analysis_audit_complete": report["analysis_audit_complete"],
             "crop_audit_complete": report["crop_audit_complete"],
             "analysis_status_counts": report["analysis_status_counts"],

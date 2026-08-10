@@ -8,9 +8,10 @@ from PIL import Image
 from .analysis import _normalize_box, _resolve_ultralytics_model
 
 
-VERIFICATION_SCHEMA_VERSION = 2
+VERIFICATION_SCHEMA_VERSION = 3
 DEFAULT_MINIMUM_LUMINANCE_CORRELATION = 0.90
 MINIMUM_WATERMARK_CONFIDENCE = 0.30
+RESIDUAL_DETECTION_MODES = ("trust_klein", "verify_residual_watermarks")
 
 
 def cleanup_verifier_config_version(config):
@@ -112,7 +113,15 @@ class UltralyticsCleanupVerifier(CleanupVerifier):
             float(self.config.get("confidence", MINIMUM_WATERMARK_CONFIDENCE)),
         )
 
+    def _residual_detection_mode(self):
+        configured = str(
+            self.config.get("residual_detection_mode", "trust_klein")
+        ).strip()
+        return configured if configured in RESIDUAL_DETECTION_MODES else "trust_klein"
+
     def _detect(self, image_path, image):
+        if self._residual_detection_mode() == "trust_klein":
+            return []
         model = self._load_model()
         if model is None:
             return []
@@ -209,7 +218,12 @@ class UltralyticsCleanupVerifier(CleanupVerifier):
             "schema_version": VERIFICATION_SCHEMA_VERSION,
             "status": status,
             "passed": status == "verified_clean",
-            "confidence_threshold": self._confidence_threshold(),
+            "residual_detection_mode": self._residual_detection_mode(),
+            "confidence_threshold": (
+                self._confidence_threshold()
+                if self._residual_detection_mode() == "verify_residual_watermarks"
+                else None
+            ),
             "residual_detections": detections,
             "residual_detection_count": len(detections),
             "fidelity_metrics": metrics,
