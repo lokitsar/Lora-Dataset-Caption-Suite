@@ -128,12 +128,23 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
     assert (8, "destination_directory") in selected_widgets
     assert (8, "run_mode") in selected_widgets
     assert (8, "output_naming_mode") in selected_widgets
+    assert (8, "cleanup_override_images") in selected_widgets
     assert (3, "caption_provider_models") in selected_widgets
     assert (5, "confidence") in selected_widgets
     verifier_node = next(
         node for node in workflow["nodes"] if node["type"] == "LoraDatasetCleanupVerifier"
     )
     assert verifier_node["widgets_values"][1] == 0.3
+    builder_node = next(
+        node for node in workflow["nodes"] if node["type"] == "LoraDatasetBuilder"
+    )
+    builder_inputs = builder_node["inputs"]
+    assert builder_inputs[7]["name"] == "caption_provider"
+    assert builder_inputs[8]["name"] == "cleanup_provider"
+    assert builder_inputs[9]["name"] == "cleanup_verifier"
+    assert builder_inputs[10]["name"] == "analysis_provider"
+    assert builder_inputs[11]["name"] == "crop_provider"
+    assert builder_inputs[12]["name"] == "cleanup_override_images"
     assert len(workflow["links"]) == workflow["last_link_id"]
 
 

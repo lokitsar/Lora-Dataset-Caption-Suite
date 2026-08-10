@@ -29,6 +29,23 @@ def _safe_lora_name(value):
     return cleaned
 
 
+def _cleanup_override_keys(value):
+    if isinstance(value, (list, tuple, set)):
+        entries = [str(item) for item in value]
+    else:
+        entries = str(value or "").splitlines()
+    keys = set()
+    for entry in entries:
+        cleaned = entry.strip().strip('"').strip("'")
+        if cleaned.startswith("- "):
+            cleaned = cleaned[2:].strip()
+        if not cleaned or cleaned.startswith("#"):
+            continue
+        keys.add(cleaned.replace("\\", "/").casefold())
+        keys.add(Path(cleaned).name.casefold())
+    return keys
+
+
 class DatasetEngine:
     def __init__(
         self,
@@ -49,6 +66,7 @@ class DatasetEngine:
         force_rebuild_revision=0,
         output_naming_mode="preserve_source_names",
         lora_name="",
+        cleanup_override_images="",
         progress_callback=None,
         interrupt_callback=None,
     ):
@@ -73,6 +91,7 @@ class DatasetEngine:
             raise ValueError(f"Unknown output naming mode: {output_naming_mode}")
         self.output_naming_mode = output_naming_mode
         self.lora_name = _safe_lora_name(lora_name) if output_naming_mode == "lora_name_numbered" else ""
+        self.cleanup_override_images = _cleanup_override_keys(cleanup_override_images)
         self.progress_callback = progress_callback
         self.interrupt_callback = interrupt_callback
         self.dataset_directory = ensure_directory(self.destination_directory / "dataset")
@@ -88,6 +107,18 @@ class DatasetEngine:
         )
         self.sidecars = DatasetSidecarWriter()
         self.validator = DatasetValidator()
+
+    def _cleanup_override_for_record(self, record):
+        source_relative = str(record.get("source_relative_path") or "").replace("\\", "/")
+        candidates = (
+            source_relative,
+            Path(source_relative).name,
+            Path(str(record.get("output_image_path") or "")).name,
+        )
+        return next(
+            (candidate for candidate in candidates if candidate.casefold() in self.cleanup_override_images),
+            "",
+        )
 
     def synchronize(self):
         items = self.source.discover()
@@ -258,6 +289,7 @@ class DatasetEngine:
             "cleanup_verification_status_counts": report["cleanup_verification_status_counts"],
             "cleanup_review_items": report["cleanup_review_items"],
             "cleanup_excluded_items": report["cleanup_excluded_items"],
+            "cleanup_override_applied_count": report["cleanup_override_applied_count"],
             "analysis_audit_complete": report["analysis_audit_complete"],
             "crop_audit_complete": report["crop_audit_complete"],
             "analysis_status_counts": report["analysis_status_counts"],
@@ -541,6 +573,23 @@ class DatasetEngine:
                     f"Cleanup verifier failed and requires review: {review_path}"
                 ) from error
             verification_status = verification.get("status", "verification_failed")
+            override_name = self._cleanup_override_for_record(record)
+            if (
+                override_name
+                and verification_status == "residual_artifact"
+                and verification.get("residual_detections")
+                and not verification.get("fidelity_failures")
+            ):
+                verification = dict(verification)
+                verification.update({
+                    "status": "verified_clean_override",
+                    "passed": True,
+                    "override_applied": True,
+                    "override_matched_name": override_name,
+                    "override_original_status": verification_status,
+                    "override_reason": "User approved legitimate scene or clothing text",
+                })
+                verification_status = verification["status"]
             if not verification.get("passed", False):
                 self.manifest.mark_cleanup_verification(
                     record["item_id"],

@@ -196,7 +196,8 @@
         {"name": "cleanup_provider", "type": "LORA_CLEANUP_PROVIDER", "link": 4},
         {"name": "cleanup_verifier", "type": "LORA_CLEANUP_VERIFIER", "link": 5},
         {"name": "analysis_provider", "type": "LORA_ANALYSIS_PROVIDER", "link": 6},
-        {"name": "crop_provider", "type": "LORA_CROP_PROVIDER", "link": 7}
+        {"name": "crop_provider", "type": "LORA_CROP_PROVIDER", "link": 7},
+        {"name": "cleanup_override_images", "type": "STRING", "widget": {"name": "cleanup_override_images"}, "link": null}
       ],
       "outputs": [
         {"name": "status_json", "type": "STRING", "slot_index": 0, "links": [8, 9]},
@@ -204,7 +205,7 @@
       ],
       "title": "BUILD DATASET",
       "properties": {"Node name for S&R": "LoraDatasetBuilder"},
-      "widgets_values": ["", "resume", 0, "preserve_source_names", ""]
+      "widgets_values": ["", "resume", 0, "preserve_source_names", "", ""]
     },
     {
       "id": 9,
@@ -273,6 +274,7 @@
         [8, "force_rebuild_revision", {"description": "Use a new positive revision only for an intentional force rebuild."}],
         [8, "output_naming_mode", {"description": "Keep source basenames or use stable clean LoRA numbering."}],
         [8, "lora_name", {"description": "Required for numbered naming, for example taarna."}],
+        [8, "cleanup_override_images", {"height": 90, "description": "One approved source or final dataset filename per line. Use this only for legitimate scene or clothing text; image-fidelity failures cannot be overridden."}],
         [3, "backend", {"description": "Caption API provider."}],
         [3, "api_url", {"description": "Leave blank for the provider default."}],
         [3, "api_key", {"description": "Optional API key. Saving the workflow also saves this widget value."}],

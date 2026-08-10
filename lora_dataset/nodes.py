@@ -444,6 +444,14 @@ class DatasetBuilderNode:
                 "cleanup_verifier": ("LORA_CLEANUP_VERIFIER",),
                 "analysis_provider": ("LORA_ANALYSIS_PROVIDER",),
                 "crop_provider": ("LORA_CROP_PROVIDER",),
+                "cleanup_override_images": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": True,
+                        "tooltip": "One explicitly approved source or final PNG filename per line. Overrides residual text/watermark detections only; fidelity failures remain blocked.",
+                    },
+                ),
             },
             "hidden": {"unique_id": "UNIQUE_ID"},
         }
@@ -467,6 +475,7 @@ class DatasetBuilderNode:
         force_rebuild_revision=0,
         output_naming_mode="preserve_source_names",
         lora_name="",
+        cleanup_override_images="",
         caption_provider=None,
         cleanup_provider=None,
         cleanup_verifier=None,
@@ -538,6 +547,7 @@ class DatasetBuilderNode:
             force_rebuild_revision=force_rebuild_revision,
             output_naming_mode=output_naming_mode,
             lora_name=lora_name,
+            cleanup_override_images=cleanup_override_images,
             progress_callback=progress_callback,
             interrupt_callback=interrupt_callback,
         )
@@ -625,6 +635,11 @@ class DatasetRunSummaryNode:
         if inactive:
             lines.append(
                 f"Inactive history: {inactive} source item(s); this does not block training readiness."
+            )
+        cleanup_overrides = int(status.get("cleanup_override_applied_count", 0) or 0)
+        if cleanup_overrides:
+            lines.append(
+                f"Cleanup overrides: {cleanup_overrides} explicitly approved image(s); detector evidence retained."
             )
 
         report = status.get("dataset_report") or {}

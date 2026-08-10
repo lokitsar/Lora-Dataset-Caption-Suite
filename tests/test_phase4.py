@@ -226,6 +226,83 @@ def test_failed_cleanup_verification_excludes_image_before_captioning(tmp_path):
     assert record["cleanup_verification_status"] == "residual_artifact"
 
 
+def test_named_cleanup_override_accepts_legitimate_clothing_text_and_retains_evidence(tmp_path):
+    source = tmp_path / "source"
+    destination = tmp_path / "project"
+    make_pattern(source / "download (3).jpg", size=(640, 640))
+    verifier = StaticVerifier({
+        "status": "residual_artifact",
+        "passed": False,
+        "confidence_threshold": 0.3,
+        "residual_detection_count": 1,
+        "residual_detections": [
+            {
+                "label": "watermark",
+                "confidence": 0.46,
+                "bbox": [20, 500, 120, 630],
+                "bbox_normalized": [0.03125, 0.78125, 0.1875, 0.984375],
+            }
+        ],
+        "fidelity_metrics": {"structural_similarity": 0.99},
+        "fidelity_failures": [],
+    })
+    captioner = RecordingCaptioner()
+    result = DatasetEngine(
+        source,
+        destination,
+        profile(),
+        cleanup_verifier=verifier,
+        cleanup_verifier_version="verifier-v1",
+        caption_provider=captioner,
+        caption_provider_version="caption-v1",
+        output_naming_mode="lora_name_numbered",
+        lora_name="SohannaR-Krea2",
+        cleanup_override_images="SohannaR-Krea2_0001.png",
+    ).run("resume")
+
+    assert result["complete"] == 1
+    assert result["excluded"] == 0
+    assert result["training_ready"]
+    assert result["cleanup_override_applied_count"] == 1
+    assert captioner.calls == 1
+    record = DatasetManifest(result["manifest"]).records()[0]
+    evidence = json.loads(record["cleanup_verification_json"])
+    assert record["cleanup_verification_status"] == "verified_clean"
+    assert evidence["status"] == "verified_clean_override"
+    assert evidence["override_applied"] is True
+    assert evidence["override_matched_name"] == "SohannaR-Krea2_0001.png"
+    assert evidence["override_original_status"] == "residual_artifact"
+    assert evidence["residual_detections"][0]["confidence"] == 0.46
+    summary = DatasetRunSummaryNode().summarize(json.dumps(result))["result"][0]
+    assert "Cleanup overrides: 1 explicitly approved image(s)" in summary
+
+
+def test_cleanup_override_cannot_bypass_image_fidelity_failure(tmp_path):
+    source = tmp_path / "source"
+    destination = tmp_path / "project"
+    make_pattern(source / "damaged.png", size=(640, 640))
+    verifier = StaticVerifier({
+        "status": "residual_artifact_and_excessive_change",
+        "passed": False,
+        "residual_detection_count": 1,
+        "residual_detections": [{"label": "watermark", "confidence": 0.9}],
+        "fidelity_metrics": {"structural_similarity": 0.4},
+        "fidelity_failures": ["structural_similarity_below_limit"],
+    })
+    result = DatasetEngine(
+        source,
+        destination,
+        profile(),
+        cleanup_verifier=verifier,
+        cleanup_verifier_version="verifier-v1",
+        cleanup_override_images="damaged.png",
+    ).run("resume")
+
+    assert result["complete"] == 0
+    assert result["excluded"] == 1
+    assert result["cleanup_override_applied_count"] == 0
+
+
 def test_numbered_issue_reports_final_name_source_name_and_detector_evidence(tmp_path):
     source = tmp_path / "source"
     destination = tmp_path / "project"

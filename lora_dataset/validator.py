@@ -126,6 +126,14 @@ class DatasetValidator:
             if record.get("status") == "excluded"
             and record.get("review_status", "not_requested") == "cleanup_excluded"
         )
+        cleanup_override_applied_count = 0
+        for record in eligible_records:
+            try:
+                verification = json.loads(record.get("cleanup_verification_json") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                verification = {}
+            if isinstance(verification, dict) and verification.get("override_applied") is True:
+                cleanup_override_applied_count += 1
         analysis_status_counts = Counter(
             record.get("analysis_status", "not_started") for record in eligible_records
         )
@@ -180,6 +188,7 @@ class DatasetValidator:
             "cleanup_verification_status_counts": dict(cleanup_verification_status_counts),
             "cleanup_review_items": cleanup_review_items,
             "cleanup_excluded_items": cleanup_excluded_items,
+            "cleanup_override_applied_count": cleanup_override_applied_count,
             "analysis_status_counts": dict(analysis_status_counts),
             "analysis_audit_complete": analysis_audit_complete,
             "crop_status_counts": dict(crop_status_counts),
