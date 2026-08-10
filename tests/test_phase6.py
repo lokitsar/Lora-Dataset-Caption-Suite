@@ -7,7 +7,11 @@ from PIL import Image
 
 from lora_dataset.app_report import render_dataset_summary
 from lora_dataset.engine import DatasetEngine
-from lora_dataset.nodes import DatasetAppReportNode, NODE_CLASS_MAPPINGS
+from lora_dataset.nodes import (
+    DatasetAppReportNode,
+    DatasetCleanupVerifierNode,
+    NODE_CLASS_MAPPINGS,
+)
 from lora_dataset.profile import DatasetProfileRegistry
 
 
@@ -125,7 +129,17 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
     assert (8, "run_mode") in selected_widgets
     assert (8, "output_naming_mode") in selected_widgets
     assert (3, "caption_provider_models") in selected_widgets
+    assert (5, "confidence") in selected_widgets
+    verifier_node = next(
+        node for node in workflow["nodes"] if node["type"] == "LoraDatasetCleanupVerifier"
+    )
+    assert verifier_node["widgets_values"][1] == 0.3
     assert len(workflow["links"]) == workflow["last_link_id"]
+
+
+def test_cleanup_verifier_uses_conservative_watermark_confidence_default():
+    confidence = DatasetCleanupVerifierNode.INPUT_TYPES()["required"]["confidence"]
+    assert confidence[1]["default"] == 0.3
 
 
 def test_phase6_app_report_node_is_registered():

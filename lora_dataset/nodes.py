@@ -330,7 +330,7 @@ class DatasetCleanupVerifierNode:
         return {
             "required": {
                 "watermark_model": (models, {"default": models[0]}),
-                "confidence": ("FLOAT", {"default": 0.2, "min": 0.05, "max": 0.95, "step": 0.05}),
+                "confidence": ("FLOAT", {"default": 0.3, "min": 0.05, "max": 0.95, "step": 0.05}),
                 "image_size": ("INT", {"default": 640, "min": 320, "max": 1280, "step": 32}),
                 "device": (["cpu", "0"],),
                 "minimum_structural_similarity": (

@@ -111,7 +111,7 @@ class UltralyticsCleanupVerifier(CleanupVerifier):
             return []
         results = model.predict(
             source=str(image_path),
-            conf=float(self.config.get("confidence", 0.2)),
+            conf=float(self.config.get("confidence", 0.3)),
             imgsz=int(self.config.get("image_size", 640)),
             device=self.config.get("device", "cpu"),
             verbose=False,

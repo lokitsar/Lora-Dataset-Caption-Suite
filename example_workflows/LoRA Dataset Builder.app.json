@@ -132,7 +132,7 @@
       ],
       "title": "5 — Cleanup Verification",
       "properties": {"Node name for S&R": "LoraDatasetCleanupVerifier"},
-      "widgets_values": ["bbox/watermark.pt", 0.2, 640, "cpu", 0.72, 0.12, 0.2, 0.3, 0.02]
+      "widgets_values": ["bbox/watermark.pt", 0.3, 640, "cpu", 0.72, 0.12, 0.2, 0.3, 0.02]
     },
     {
       "id": 6,
@@ -282,6 +282,7 @@
         [4, "text_encoder", {"description": "Installed Klein text encoder."}],
         [4, "vae", {"description": "Installed Klein VAE."}],
         [5, "watermark_model", {"description": "Local watermark detector used for cleanup verification."}],
+        [5, "confidence", {"description": "Minimum residual-watermark confidence. The default is 30%; raise it to reduce false positives."}],
         [6, "subject_model", {"description": "Local subject detector used for safe cropping."}],
         [6, "face_model", {"description": "Local face detector used for identity preservation."}]
       ],
