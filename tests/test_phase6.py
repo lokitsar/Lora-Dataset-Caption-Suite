@@ -155,7 +155,7 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
 def test_cleanup_verifier_uses_conservative_watermark_confidence_default():
     confidence = DatasetCleanupVerifierNode.INPUT_TYPES()["required"]["confidence"]
     assert confidence[1]["default"] == 0.3
-    assert confidence[1]["min"] == 0.3
+    assert confidence[1]["min"] == 0.05
 
 
 def test_phase6_app_report_node_is_registered():

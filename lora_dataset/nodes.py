@@ -337,10 +337,10 @@ class DatasetCleanupVerifierNode:
                     "FLOAT",
                     {
                         "default": MINIMUM_WATERMARK_CONFIDENCE,
-                        "min": MINIMUM_WATERMARK_CONFIDENCE,
+                        "min": 0.05,
                         "max": 0.95,
                         "step": 0.05,
-                        "tooltip": "Residual detections below 30% are ignored to avoid low-confidence scene false positives.",
+                        "tooltip": "Legacy values below 30% are accepted by the workflow UI and migrated to the backend's 30% minimum when residual scanning is enabled.",
                     },
                 ),
                 "image_size": ("INT", {"default": 640, "min": 320, "max": 1280, "step": 32}),
