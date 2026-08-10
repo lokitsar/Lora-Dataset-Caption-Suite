@@ -693,10 +693,36 @@ class DatasetRunSummaryNode:
             lines.append("Images needing attention or excluded from training:")
             for issue in issues:
                 image_name = issue.get("image") or "unknown image"
+                source_name = issue.get("source_image") or ""
+                display_name = image_name
+                if source_name and source_name != image_name:
+                    display_name += f" (source: {source_name})"
                 issue_status = str(issue.get("status") or "issue").upper()
                 stage = issue.get("stage") or "processing"
                 reason = issue.get("reason") or "No reason recorded"
-                lines.append(f"- [{issue_status}] {image_name} ({stage}): {reason}")
+                lines.append(f"- [{issue_status}] {display_name} ({stage}): {reason}")
+                detections = issue.get("residual_detections") or []
+                for detection in detections[:3] if isinstance(detections, list) else []:
+                    if not isinstance(detection, dict):
+                        continue
+                    label = detection.get("label") or "artifact"
+                    confidence = detection.get("confidence")
+                    detector_text = f"  Detector: {label}"
+                    if isinstance(confidence, (int, float)):
+                        detector_text += f" at {confidence:.1%} confidence"
+                    box = detection.get("bbox_normalized")
+                    if isinstance(box, (list, tuple)) and len(box) == 4:
+                        try:
+                            detector_text += (
+                                "; region "
+                                f"x {float(box[0]):.1%}–{float(box[2]):.1%}, "
+                                f"y {float(box[1]):.1%}–{float(box[3]):.1%}"
+                            )
+                        except (TypeError, ValueError):
+                            pass
+                    lines.append(detector_text)
+                if isinstance(detections, list) and len(detections) > 3:
+                    lines.append(f"  Detector: {len(detections) - 3} additional hit(s) in issues_json")
                 if issue.get("review_directory"):
                     lines.append(f"  Review: {issue['review_directory']}")
         else:

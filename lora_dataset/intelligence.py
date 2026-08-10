@@ -14,6 +14,16 @@ def _utc_now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _image_reference(record):
+    source_image = str(record.get("source_relative_path") or "")
+    output_path = str(record.get("output_image_path") or "")
+    output_image = Path(output_path).name if output_path else ""
+    return {
+        "image": output_image or source_image,
+        "source_image": source_image,
+    }
+
+
 def difference_hash(image_path, hash_size=8):
     size = max(4, int(hash_size))
     with Image.open(image_path) as image:
@@ -60,8 +70,10 @@ def find_near_duplicate_groups(records, maximum_distance=6, hash_size=8):
         image_path = Path(record["output_image_path"])
         if not image_path.is_file():
             continue
+        reference = _image_reference(record)
         hashed.append({
-            "image": record["source_relative_path"],
+            "image": reference["image"],
+            "source_image": reference["source_image"],
             "output": str(image_path),
             "hash": difference_hash(image_path, hash_size=hash_size),
             "source_hash": record.get("source_hash", ""),
@@ -77,6 +89,8 @@ def find_near_duplicate_groups(records, maximum_distance=6, hash_size=8):
                 pairs.append({
                     "first": first["image"],
                     "second": second["image"],
+                    "first_source": first["source_image"],
+                    "second_source": second["source_image"],
                     "distance": distance,
                 })
     groups = _connected_groups([item["image"] for item in hashed], pairs)
@@ -89,6 +103,11 @@ def find_near_duplicate_groups(records, maximum_distance=6, hash_size=8):
         ]
         result.append({
             "images": images,
+            "source_images": {
+                item["image"]: item["source_image"]
+                for item in hashed
+                if item["image"] in image_set
+            },
             "minimum_distance": min(pair["distance"] for pair in group_pairs),
             "pairs": sorted(
                 group_pairs,
@@ -114,7 +133,7 @@ def _caption_groups(records):
             continue
         caption = " ".join(caption_path.read_text(encoding="utf-8-sig").split())
         if caption:
-            captions[caption.casefold()].append(record["source_relative_path"])
+            captions[caption.casefold()].append(_image_reference(record)["image"])
     return [
         sorted(images, key=str.casefold)
         for images in captions.values()
@@ -174,7 +193,7 @@ def _item_quality(record, profile, duplicate_caption_images):
     if caption_path.is_file():
         caption = caption_path.read_text(encoding="utf-8-sig").strip()
         caption_words = len(caption.split())
-        if record["source_relative_path"] in duplicate_caption_images:
+        if _image_reference(record)["image"] in duplicate_caption_images:
             warnings.append("duplicate_caption")
             score -= 8
         maximum_words = int(settings.get("caption_max_words", 120))
@@ -194,7 +213,7 @@ def _item_quality(record, profile, duplicate_caption_images):
             score -= 5
 
     return {
-        "image": record["source_relative_path"],
+        **_image_reference(record),
         "score": max(0, score),
         "warnings": warnings,
         "dimensions": dimensions,
@@ -239,7 +258,7 @@ def build_dataset_report(records, profile, training_ready):
     caption_word_counts = [item["caption_words"] for item in quality_items]
     exact_duplicate_exclusions = [
         {
-            "image": record["source_relative_path"],
+            **_image_reference(record),
             "reason": record.get("error") or "Exact duplicate excluded",
         }
         for record in excluded_records
@@ -334,12 +353,15 @@ def build_dataset_report(records, profile, training_ready):
         },
         "review": {
             "failed": [
-                {"image": record["source_relative_path"], "reason": record.get("error") or "Failed"}
+                {
+                    **_image_reference(record),
+                    "reason": record.get("error") or "Failed",
+                }
                 for record in failed_records
             ],
             "excluded": [
                 {
-                    "image": record["source_relative_path"],
+                    **_image_reference(record),
                     "reason": record.get("error") or "Excluded",
                     "review_status": record.get("review_status", "not_requested"),
                 }

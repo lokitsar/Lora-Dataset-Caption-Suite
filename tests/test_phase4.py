@@ -226,6 +226,54 @@ def test_failed_cleanup_verification_excludes_image_before_captioning(tmp_path):
     assert record["cleanup_verification_status"] == "residual_artifact"
 
 
+def test_numbered_issue_reports_final_name_source_name_and_detector_evidence(tmp_path):
+    source = tmp_path / "source"
+    destination = tmp_path / "project"
+    make_pattern(source / "19.png", size=(640, 640))
+    verifier = StaticVerifier({
+        "status": "residual_artifact",
+        "passed": False,
+        "residual_detection_count": 1,
+        "residual_detections": [
+            {
+                "label": "watermark",
+                "confidence": 0.210587,
+                "bbox": [123.075, 293.065, 204.688, 825.238],
+                "bbox_normalized": [0.120191, 0.286197, 0.199891, 0.805897],
+            }
+        ],
+        "fidelity_metrics": {"structural_similarity": 0.967931},
+        "fidelity_failures": [],
+    })
+    result = DatasetEngine(
+        source,
+        destination,
+        profile(),
+        cleanup_verifier=verifier,
+        cleanup_verifier_version="verifier-v1",
+        output_naming_mode="lora_name_numbered",
+        lora_name="SohannaR-Krea2",
+    ).run("resume")
+
+    issue = result["issues"][0]
+    assert issue["image"] == "SohannaR-Krea2_0001.png"
+    assert issue["source_image"] == "19.png"
+    assert issue["residual_detection_count"] == 1
+    assert issue["residual_detections"][0]["confidence"] == 0.210587
+    assert result["dataset_report"]["review"]["excluded"][0]["image"] == (
+        "SohannaR-Krea2_0001.png"
+    )
+    assert result["dataset_report"]["review"]["excluded"][0]["source_image"] == "19.png"
+
+    summary, issues_json, _report_json = DatasetRunSummaryNode().summarize(
+        json.dumps(result)
+    )["result"]
+    assert "SohannaR-Krea2_0001.png (source: 19.png)" in summary
+    assert "watermark at 21.1% confidence" in summary
+    assert "x 12.0%–20.0%, y 28.6%–80.6%" in summary
+    assert json.loads(issues_json)[0]["source_image"] == "19.png"
+
+
 def test_excluded_bad_image_does_not_block_remaining_training_dataset(tmp_path):
     source = tmp_path / "source"
     destination = tmp_path / "project"

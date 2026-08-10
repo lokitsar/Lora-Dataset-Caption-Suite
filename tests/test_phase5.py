@@ -154,6 +154,25 @@ def test_numbered_lora_naming_is_stable_and_renames_without_recaptioning(tmp_pat
     assert not list((destination / "dataset").glob("taarna_*.png"))
     assert renamed["dataset_report"]["naming"]["lora_names"] == ["Taarna Hero"]
     assert renamed["dataset_report"]["naming"]["stable_sequence_complete"]
+    near_groups = renamed["dataset_report"]["duplicates"]["near_duplicate_groups"]
+    numbered_names = {
+        image for group in near_groups for image in group["images"]
+    }
+    assert numbered_names == {
+        "Taarna Hero_0001.png",
+        "Taarna Hero_0002.png",
+        "Taarna Hero_0003.png",
+    }
+    source_names = {
+        image: source_name
+        for group in near_groups
+        for image, source_name in group["source_images"].items()
+    }
+    assert source_names == {
+        "Taarna Hero_0001.png": "a.png",
+        "Taarna Hero_0002.png": "b.png",
+        "Taarna Hero_0003.png": "aa.png",
+    }
 
     restored = DatasetEngine(
         source,

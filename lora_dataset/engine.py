@@ -408,12 +408,37 @@ class DatasetEngine:
                     / "cleanup_verification"
                     / f"{record['item_id']}-{record['source_hash'][:12]}-{record['profile_version']}"
                 )
+            output_path = str(record.get("output_image_path") or "")
+            output_image = Path(output_path).name if output_path else ""
+            verification = {}
+            try:
+                parsed = json.loads(record.get("cleanup_verification_json") or "{}")
+                if isinstance(parsed, dict):
+                    verification = parsed
+            except (TypeError, json.JSONDecodeError):
+                pass
+            residual_detections = []
+            raw_detections = verification.get("residual_detections") or []
+            if isinstance(raw_detections, list):
+                for detection in raw_detections:
+                    if not isinstance(detection, dict):
+                        continue
+                    residual_detections.append({
+                        key: detection[key]
+                        for key in ("label", "confidence", "bbox", "bbox_normalized")
+                        if key in detection
+                    })
             issues.append({
-                "image": record["source_relative_path"],
+                "image": output_image or record["source_relative_path"],
+                "source_image": record["source_relative_path"],
                 "status": record["status"],
                 "stage": stage,
                 "reason": record.get("error") or cleanup_status or "Unknown processing error",
                 "cleanup_verification_status": cleanup_status,
+                "residual_detection_count": int(
+                    verification.get("residual_detection_count", len(residual_detections)) or 0
+                ),
+                "residual_detections": residual_detections,
                 "review_status": record.get("review_status", "not_requested"),
                 "review_directory": str(review_path) if review_path.is_dir() else "",
             })
