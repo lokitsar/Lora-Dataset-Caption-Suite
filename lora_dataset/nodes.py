@@ -401,7 +401,7 @@ class DatasetBuilderNode:
                 "run_mode": (
                     ["resume", "reprocess_failed", "force_rebuild"],
                     {
-                        "tooltip": "resume = new or source-changed files only; reprocess_failed = those plus failed files; force_rebuild = rewrite every active item once for the selected revision",
+                        "tooltip": "resume = new or source-changed files only; reprocess_failed = those plus failed and cleanup-excluded files; force_rebuild = rewrite every active item once for the selected revision",
                     },
                 ),
                 "force_rebuild_revision": (

@@ -343,9 +343,20 @@ class DatasetManifest:
             """, (now,))
             if mode == "reprocess_failed":
                 connection.execute("""
-                    UPDATE dataset_items SET status = 'pending', error = NULL, started_at = NULL,
+                    UPDATE dataset_items SET status = 'pending',
+                        normalization_status = 'not_started',
+                        watermark_status = 'not_requested',
+                        cleanup_verification_status = 'not_requested',
+                        cleanup_verification_json = NULL,
+                        analysis_status = 'not_started', analysis_json = NULL,
+                        crop_status = 'not_requested', crop_json = NULL,
+                        caption_status = 'not_started', validation_status = 'not_started',
+                        review_status = 'not_requested', error = NULL, started_at = NULL,
                         completed_at = NULL, updated_at = ?
-                    WHERE active = 1 AND status = 'failed'
+                    WHERE active = 1 AND (
+                        status = 'failed'
+                        OR (status = 'excluded' AND review_status = 'cleanup_excluded')
+                    )
                 """, (now,))
             elif mode == "force_rebuild":
                 row = connection.execute(

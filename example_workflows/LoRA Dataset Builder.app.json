@@ -269,7 +269,7 @@
         [2, "dataset_type", {"description": "Character, Style, or Concept."}],
         [2, "trigger", {"description": "LoRA trigger token or phrase."}],
         [2, "additional_caption_instructions", {"height": 110, "description": "Optional instructions for an unusual dataset."}],
-        [8, "run_mode", {"description": "Resume new/changed items, retry failures, or intentionally rebuild."}],
+        [8, "run_mode", {"description": "Resume new/changed items, retry failed and cleanup-excluded items, or intentionally rebuild."}],
         [8, "force_rebuild_revision", {"description": "Use a new positive revision only for an intentional force rebuild."}],
         [8, "output_naming_mode", {"description": "Keep source basenames or use stable clean LoRA numbering."}],
         [8, "lora_name", {"description": "Required for numbered naming, for example taarna."}],

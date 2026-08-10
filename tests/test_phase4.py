@@ -343,6 +343,7 @@ def test_excluded_bad_image_does_not_block_remaining_training_dataset(tmp_path):
     assert downstream_change["training_ready"]
     assert downstream_captioner.calls == 0
 
+    retry_captioner = RecordingCaptioner()
     reconsidered = DatasetEngine(
         source,
         destination,
@@ -356,14 +357,16 @@ def test_excluded_bad_image_does_not_block_remaining_training_dataset(tmp_path):
             "fidelity_failures": [],
         }),
         cleanup_verifier_version="verifier-v2",
-        caption_provider=RecordingCaptioner(),
+        caption_provider=retry_captioner,
         caption_provider_version="caption-v2",
-        force_rebuild_revision=1,
-    ).run("force_rebuild")
-    assert reconsidered["processed_this_run"] == 2
+    ).run("reprocess_failed")
+    assert reconsidered["processed_this_run"] == 1
     assert reconsidered["complete"] == 2
     assert reconsidered["excluded"] == 0
     assert reconsidered["training_ready"]
+    assert retry_captioner.calls == 1
+    assert (destination / "dataset" / "bad.png").is_file()
+    assert (destination / "dataset" / "good.png").is_file()
 
 
 def test_cleanup_verifier_exception_routes_to_review_before_captioning(tmp_path):
