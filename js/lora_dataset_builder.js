@@ -74,6 +74,16 @@ function setWidgetValue(widget, value) {
   if (widget.inputEl) widget.inputEl.value = value;
 }
 
+function commitWidgetValue(node, widget, value) {
+  if (!widget) return;
+  const previousValue = widget.value;
+  setWidgetValue(widget, value);
+  if (previousValue === value) return;
+  widget.callback?.(value, app.canvas, node, undefined, undefined);
+  node.onWidgetChanged?.(widget.name, value, previousValue, widget);
+  node.setDirtyCanvas?.(true, true);
+}
+
 function buildCaptionProviderPanel(node) {
   const panel = document.createElement("div");
   panel.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:6px;box-sizing:border-box;width:100%;";
@@ -105,6 +115,16 @@ function buildCaptionProviderPanel(node) {
 
   const modelSelect = document.createElement("select");
   modelSelect.style.cssText = "width:100%;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(0,0,0,0.3);color:inherit;font-size:12px;";
+
+  const applySelectedModel = () => {
+    const modelNameWidget = node.widgets?.find((widget) => widget.name === "model_name");
+    commitWidgetValue(node, modelNameWidget, modelSelect.value);
+  };
+  modelSelect.addEventListener("input", applySelectedModel);
+  modelSelect.addEventListener("change", applySelectedModel);
+  for (const eventName of ["pointerdown", "mousedown", "click"]) {
+    modelSelect.addEventListener(eventName, (event) => event.stopPropagation());
+  }
 
   modelRow.appendChild(modelLabel);
   modelRow.appendChild(modelSelect);
@@ -167,13 +187,8 @@ function buildCaptionProviderPanel(node) {
         option.selected = true;
         modelSelect.insertBefore(option, modelSelect.firstChild);
       } else if (!currentModel && modelSelect.value) {
-        setWidgetValue(modelNameWidget, modelSelect.value);
+        commitWidgetValue(node, modelNameWidget, modelSelect.value);
       }
-
-      modelSelect.onchange = () => {
-        setWidgetValue(modelNameWidget, modelSelect.value);
-        node.setDirtyCanvas(true, true);
-      };
       modelRow.style.display = "flex";
       setStatus(true, `Connected — ${data.models.length} model(s) available`);
       node.setDirtyCanvas(true, true);
