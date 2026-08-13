@@ -1,8 +1,11 @@
 import base64
 import hashlib
+import http.client
 import io
 import json
 import re
+import socket
+import time
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -23,6 +26,7 @@ DEFAULT_PROVIDER_URLS = {
 
 NANOGPT_VIDEO_BASE64_BUDGET = 3_250_000
 NANOGPT_VIDEO_JPEG_QUALITIES = (90, 82, 74, 66, 58, 50)
+TRANSIENT_HTTP_CODES = {408, 425, 429, 500, 502, 503, 504}
 
 SECRET_FIELDS = {"api_key", "openrouter_key", "nanogpt_key"}
 
@@ -332,7 +336,7 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
         else:
             user_content.append({
                 "type": "text",
-                "text": "No reliable speech or audio transcript evidence was detected for this clip.",
+                "text": "Use the ordered visual frames as the complete evidence for this caption.",
             })
         for index, (media_type, image_b64) in enumerate(encoded, 1):
             user_content.extend([
@@ -463,9 +467,39 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
             headers=self._headers(),
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=int(self.config.get("timeout", 120))) as response:
-            result = json.loads(response.read().decode("utf-8"))
+        result = self._request_json_with_retries(request)
         return self._message_text(result["choices"][0]["message"])
+
+    def _request_json_with_retries(self, request):
+        attempts = max(1, int(self.config.get("request_attempts", 3)))
+        timeout = int(self.config.get("timeout", 120))
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as error:
+                if error.code not in TRANSIENT_HTTP_CODES or attempt + 1 >= attempts:
+                    raise
+                detail = f"HTTP {error.code}"
+            except (
+                http.client.RemoteDisconnected,
+                ConnectionAbortedError,
+                ConnectionResetError,
+                TimeoutError,
+                socket.timeout,
+                urllib.error.URLError,
+            ) as error:
+                if attempt + 1 >= attempts:
+                    raise
+                detail = str(error)
+            delay = min(4, 2 ** attempt)
+            print(
+                f"[LoRA Dataset Captioner] Transient {self.backend} request failure "
+                f"({detail}); retrying in {delay}s ({attempt + 2}/{attempts})",
+                flush=True,
+            )
+            time.sleep(delay)
+        raise RuntimeError(f"Caption request failed after {attempts} attempts")
 
     def _ollama_request(self, instruction, image_b64):
         base = self._base_url()
