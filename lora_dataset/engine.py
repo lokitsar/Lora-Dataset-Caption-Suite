@@ -290,6 +290,9 @@ class DatasetEngine:
         self._notify_progress(processed, work_total, "", failures, excluded, "running")
 
         if self.transcriber is not None and self.original_video_path is not None:
+            self._notify_progress(
+                0, work_total, f"Whisper: {self.original_video_path.name}", failures, excluded, "running"
+            )
             try:
                 self.original_transcript = self.transcriber.transcribe(self.original_video_path)
             finally:
