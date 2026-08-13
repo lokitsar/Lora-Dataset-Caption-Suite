@@ -11,6 +11,7 @@ from pathlib import Path
 from PIL import Image
 
 from .provider_images import scale_for_provider
+from .video import encode_png, sample_video_frames
 
 
 DEFAULT_PROVIDER_URLS = {
@@ -22,6 +23,28 @@ DEFAULT_PROVIDER_URLS = {
 
 SECRET_FIELDS = {"api_key", "openrouter_key", "nanogpt_key"}
 
+MINIMAX_H3_VIDEO_CAPTION_POLICY = """You are a video dataset captioning model for MiniMax H3 LoRA training.
+
+Your job is to create one accurate sidecar caption for each training video. The attached images are ordered frames sampled chronologically from one prepared video. Treat them as temporal evidence for the complete clip, not as separate images.
+
+The caption must describe what is visibly present in the video, how it changes over time, and any dialogue or audible event supplied as transcript evidence.
+
+Write one concise natural-language paragraph. Do not output reasoning, bullets, numbering, metadata, analysis, headings, or explanations.
+
+Describe the main subject or subjects; important visible appearance details needed to distinguish them; the environment and scene; primary subject motion in chronological order; camera movement, if any; important secondary motion such as hair, clothing, vehicles, water, smoke, foliage, or objects moving through the scene; and framing or composition when it materially affects the clip.
+
+For motion-concept training, give particular attention to the demonstrated motion. Describe it clearly and consistently across clips. Use chronological language when useful: describe the initial state, the motion that occurs, and the ending state. Do not narrate every frame.
+
+For a stationary-camera clip, explicitly state that the camera remains stationary when this helps distinguish subject motion from camera motion. For a camera-motion concept, distinguish camera movement from subject movement.
+
+Caption only supported evidence, not assumptions. Do not use uncertain language such as "appears to," "seems to," "probably," or "possibly." Do not add intentions, emotions that are not visibly expressed, production metadata, quality ratings, or speculative context. When reliable transcript evidence is supplied, include all clearly spoken words in quotation marks and place them in the correct point of the chronological action. Mention music, singing, vocalizations, or sound effects only when the transcript evidence explicitly identifies them. Treat automatic transcripts as fallible: omit garbled text and never invent a speaker identity.
+
+Do not use generic quality tags such as "masterpiece," "best quality," "4K," "highly detailed," or "professional." Do not describe a target visual style unless that style is intentionally meant to be caption-conditioned.
+
+For a style LoRA, describe the visible content while leaving the shared target style primarily represented by the trigger. For a motion LoRA, describe enough scene content to separate it from the repeated motion concept, but do not over-caption irrelevant static details.
+
+Use natural English rather than tag-style captions. Keep the caption focused. Accurately identify the subject, scene, motion, camera behavior, and important visible changes that the LoRA should learn around."""
+
 
 def provider_config_version(config):
     """Return a stable version without putting API secrets in the manifest."""
@@ -30,21 +53,40 @@ def provider_config_version(config):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
-def build_caption_instruction(profile):
+def build_caption_instruction(profile, media_type="image"):
     settings = profile.get("settings", {})
     dataset_type = profile.get("dataset_type", "dataset")
     caption_style = settings.get("caption_style", "natural_language")
     output_format = settings.get("caption_output_format", "single_paragraph")
     max_words = int(settings.get("caption_max_words", 120))
-    recipe = settings.get("caption_instruction", "Describe the visible image content accurately.")
+    recipe = settings.get("caption_instruction", "Describe the visible media content accurately.")
     extra = settings.get("additional_caption_instructions", "").strip()
+
+    media_type = "video" if str(media_type).casefold() == "video" else "image"
+    if media_type == "video":
+        trigger = str(profile.get("trigger") or "").strip()
+        trigger_instruction = (
+            f'The required trigger is "{trigger}". Begin the caption with that exact trigger followed by a comma.'
+            if trigger
+            else "No trigger word was supplied. Do not invent one."
+        )
+        parts = [
+            MINIMAX_H3_VIDEO_CAPTION_POLICY,
+            trigger_instruction,
+            f"Dataset type: {dataset_type}. Maximum length: {max_words} words.",
+            f"Dataset-type-specific emphasis: {recipe.strip()}",
+            "Return only the finished sidecar caption.",
+        ]
+        if extra:
+            parts.append(f"Additional dataset-specific instructions: {extra}")
+        return "\n\n".join(parts)
 
     parts = [
         "Write one direct positive image caption for the attached image.",
         f"Use {caption_style}. Maximum length: {max_words} words.",
         f"Required output format: {output_format}.",
         recipe.strip(),
-        "Use concrete declarative visual language. Every sentence must work unchanged as a positive image-generation prompt.",
+        "Use concrete declarative visual language. Every sentence must work unchanged as a positive generation prompt.",
         "Return only the caption content in the requested format.",
     ]
     if extra:
@@ -155,6 +197,33 @@ def normalize_caption_for_profile(text, profile):
     return ", ".join(tags)
 
 
+def normalize_video_caption_for_profile(text, profile):
+    caption = normalize_caption_for_profile(text, profile)
+    prohibited = {
+        r"\bappears? to\b": "uncertain language: appears to",
+        r"\bseems? to\b": "uncertain language: seems to",
+        r"\bprobably\b": "uncertain language: probably",
+        r"\bpossibly\b": "uncertain language: possibly",
+        r"\bmasterpiece\b": "generic quality tag: masterpiece",
+        r"\bbest quality\b": "generic quality tag: best quality",
+        r"\b4k\b": "generic quality tag: 4K",
+        r"\bhighly detailed\b": "generic quality tag: highly detailed",
+        r"\bprofessional\b": "generic quality tag: professional",
+    }
+    for pattern, reason in prohibited.items():
+        if re.search(pattern, caption, flags=re.IGNORECASE):
+            raise ValueError(f"Video caption contains prohibited {reason}")
+    return caption
+
+
+def apply_video_trigger(caption, profile):
+    trigger = str(profile.get("trigger") or "").strip()
+    if not trigger:
+        return caption
+    cleaned = re.sub(re.escape(trigger), "", caption, count=1, flags=re.IGNORECASE).strip(" ,")
+    return f"{trigger}, {cleaned}" if cleaned else trigger
+
+
 def apply_trigger(caption, profile):
     trigger = profile.get("trigger", "").strip()
     behavior = profile.get("settings", {}).get("trigger_behavior", "prefix")
@@ -189,6 +258,9 @@ class CaptionProvider(ABC):
     @abstractmethod
     def caption(self, image_path, instruction, context=None):
         raise NotImplementedError
+
+    def caption_video(self, video_path, instruction, context=None):
+        raise NotImplementedError("This caption provider does not support ordered video frames")
 
 
 class OpenAICompatibleCaptionProvider(CaptionProvider):
@@ -230,6 +302,68 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
         print(
             f"[LoRA Dataset Captioner] Captioned {Path(image_path).name} with {self.backend} "
             f"at {image_size[0]}x{image_size[1]}",
+            flush=True,
+        )
+        return result
+
+    def caption_video(self, video_path, instruction, context=None):
+        context = dict(context or {})
+        video_config = context.get("video_config") or {}
+        frames, metadata = sample_video_frames(
+            video_path,
+            count=video_config.get("caption_frames", 8),
+            megapixels=video_config.get("caption_megapixels", 0.35),
+            config=video_config,
+        )
+        encoded = []
+        for frame in frames:
+            prepared = scale_for_provider(frame, self.backend)
+            encoded.append(encode_png(prepared))
+        user_content = [{"type": "text", "text": instruction}]
+        audio_evidence = str(context.get("audio_evidence") or "").strip()
+        if audio_evidence:
+            user_content.append({
+                "type": "text",
+                "text": (
+                    "Automatic Whisper transcript aligned to this clip. Use it as audio evidence; "
+                    "it may contain recognition errors:\n" + audio_evidence
+                ),
+            })
+        else:
+            user_content.append({
+                "type": "text",
+                "text": "No reliable speech or audio transcript evidence was detected for this clip.",
+            })
+        for index, image_b64 in enumerate(encoded, 1):
+            user_content.extend([
+                {"type": "text", "text": f"Ordered video frame {index} of {len(encoded)}:"},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+            ])
+        system = (
+            "You write direct positive video-training prompts from ordered visual evidence and aligned "
+            "automatic transcript evidence. Infer only motion and temporal progression supported by the frames. Supplied instructions are private "
+            "constraints. Return only the requested caption.\n\n/no_think"
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ]
+        try:
+            result = self._openai_request(messages)
+        except urllib.error.HTTPError as error:
+            if error.code == 404 and self.backend == "Ollama":
+                result = self._ollama_request(instruction, encoded)
+            else:
+                raise RuntimeError(self._http_error_message(error)) from error
+        except Exception as error:
+            if isinstance(error, RuntimeError):
+                raise
+            raise RuntimeError(f"Video caption request failed for {self.backend}: {error}") from error
+        finally:
+            self._unload_ollama()
+        print(
+            f"[LoRA Dataset Captioner] Captioned {Path(video_path).name} with {self.backend} "
+            f"using {len(encoded)} ordered frames ({metadata['duration']:.2f}s)",
             flush=True,
         )
         return result
@@ -303,9 +437,10 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
         seed = int(self.config.get("seed", 0))
         if seed:
             options["seed"] = seed
+        images = image_b64 if isinstance(image_b64, list) else [image_b64]
         payload = {
             "model": self.model_name,
-            "messages": [{"role": "user", "content": instruction + "\n\n/no_think", "images": [image_b64]}],
+            "messages": [{"role": "user", "content": instruction + "\n\n/no_think", "images": images}],
             "stream": False,
             "keep_alive": 0,
             "options": options,

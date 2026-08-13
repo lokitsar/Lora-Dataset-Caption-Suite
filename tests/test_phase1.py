@@ -55,11 +55,12 @@ def test_profile_keeps_recipe_and_custom_caption_instructions():
     assert recipe["profile_version"]
 
 
-def test_profile_registry_is_scoped_to_krea2_and_anima():
+def test_profile_registry_contains_image_and_h3_video_models():
     registry = DatasetProfileRegistry()
-    assert registry.models == ("krea2", "anima")
+    assert registry.models == ("krea2", "anima", "minimax_h3")
     assert registry.display_name("krea2") == "Krea 2"
     assert registry.display_name("anima") == "Anima"
+    assert registry.display_name("minimax_h3") == "MiniMax H3"
 
 
 def test_nanogpt_image_input_is_limited_to_one_megapixel():

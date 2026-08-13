@@ -23,6 +23,17 @@ from .manifest import DatasetManifest
 from .profile import DatasetProfileRegistry
 from .source import DatasetSource
 from .validator import DatasetValidator
+from .video import (
+    CROP_POSITIONS,
+    ENCODER_PRESETS,
+    ORIENTATION_FILTERS,
+    RESIZE_MODES,
+    SIZE_STRATEGIES,
+    VIDEO_EXTENSIONS,
+    normalize_video_config,
+    video_config_version,
+)
+from .transcription import WHISPER_DEVICES, WHISPER_MODELS
 
 
 PROFILE_REGISTRY = DatasetProfileRegistry()
@@ -125,6 +136,7 @@ class DatasetSourceNode:
             "required": {
                 "source_directory": ("STRING", {"default": "", "multiline": False}),
                 "recursive": ("BOOLEAN", {"default": True}),
+                "media_type": (["images", "videos"],),
             }
         }
 
@@ -133,11 +145,20 @@ class DatasetSourceNode:
     FUNCTION = "discover"
     CATEGORY = "LoRA Dataset Caption Suite"
 
-    def discover(self, source_directory, recursive):
-        source = DatasetSource(source_directory, recursive=recursive)
+    def discover(self, source_directory, recursive, media_type="images"):
+        media_type = "videos" if media_type == "videos" else "images"
+        source = DatasetSource(
+            source_directory,
+            recursive=recursive,
+            extensions=VIDEO_EXTENSIONS if media_type == "videos" else None,
+        )
         count = len(source.discover())
-        config = {"source_directory": str(source.root), "recursive": bool(recursive)}
-        return (config, f"Discovered {count} supported images in {source.root}")
+        config = {
+            "source_directory": str(source.root),
+            "recursive": bool(recursive),
+            "media_type": media_type,
+        }
+        return (config, f"Discovered {count} supported {media_type} in {source.root}")
 
 
 class DatasetCaptionProviderNode:
@@ -420,6 +441,90 @@ class DatasetCleanupVerifierNode:
         return (config, f"{mode_label} / config {version}")
 
 
+class DatasetVideoPrepNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "ffmpeg_path": (
+                    "STRING",
+                    {"default": "", "multiline": False, "placeholder": "Blank = use FFmpeg on PATH"},
+                ),
+                "start_time": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 86400.0, "step": 0.01}),
+                "duration": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 300.0, "step": 0.1}),
+                "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0}),
+                "width": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 2}),
+                "height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 2}),
+                "resize_mode": (list(RESIZE_MODES), {"default": "crop_to_fill"}),
+                "crop_position": (list(CROP_POSITIONS),),
+                "pad_short_video": ("BOOLEAN", {"default": False}),
+                "keep_audio": ("BOOLEAN", {"default": True}),
+                "crf": ("INT", {"default": 18, "min": 0, "max": 51}),
+                "encoder_preset": (list(ENCODER_PRESETS),),
+                "caption_frames": ("INT", {"default": 8, "min": 2, "max": 32}),
+                "caption_megapixels": ("FLOAT", {"default": 0.35, "min": 0.05, "max": 4.0, "step": 0.05}),
+                # Appended for saved-workflow compatibility. Exact-frame mode
+                # supersedes duration and automatically clone-pads short clips.
+                "target_frame_count": ("INT", {
+                    "default": 107, "min": 0, "max": 32768, "step": 1,
+                    "tooltip": "Exact output frames; 0 uses duration instead. Short clips hold their final frame.",
+                }),
+                "size_strategy": (list(SIZE_STRATEGIES), {
+                    "default": "normalize_by_orientation",
+                }),
+                "landscape_width": ("INT", {"default": 896, "min": 64, "max": 4096, "step": 2}),
+                "landscape_height": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 2}),
+                "portrait_width": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 2}),
+                "portrait_height": ("INT", {"default": 896, "min": 64, "max": 4096, "step": 2}),
+                "orientation_filter": (list(ORIENTATION_FILTERS),),
+                "transcribe_audio": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Use Whisper dialogue and audible transcript cues as additional caption evidence.",
+                }),
+                "original_video_path": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "placeholder": "Recommended: original full movie; blank uses harvester metadata or each clip",
+                }),
+                "whisper_model": (list(WHISPER_MODELS), {"default": "small.en"}),
+                "whisper_language": ("STRING", {"default": "en", "multiline": False}),
+                "whisper_device": (list(WHISPER_DEVICES), {"default": "auto"}),
+            }
+        }
+
+    RETURN_TYPES = ("LORA_VIDEO_PREP", "STRING")
+    RETURN_NAMES = ("video_prep", "status")
+    FUNCTION = "configure"
+    CATEGORY = "LoRA Dataset Caption Suite"
+
+    def configure(self, **kwargs):
+        config = normalize_video_config(kwargs)
+        ffmpeg = config["ffmpeg_path"] or "FFmpeg on PATH"
+        if config["resize_mode"] == "keep_native":
+            dimensions = "native source dimensions"
+        elif config["size_strategy"] == "normalize_by_orientation":
+            dimensions = (
+                f"landscape {config['landscape_width']}x{config['landscape_height']}, "
+                f"portrait {config['portrait_width']}x{config['portrait_height']}"
+            )
+        else:
+            dimensions = f"{config['width']}x{config['height']}"
+        timing = (
+            f"exactly {config['target_frame_count']} frames at {config['fps']:g} fps"
+            if config["target_frame_count"]
+            else f"{config['duration']:g}s at {config['fps']:g} fps"
+        )
+        status = (
+            f"FFmpeg: {ffmpeg} / {timing} / "
+            f"{dimensions} {config['resize_mode']} / "
+            f"orientation {config['orientation_filter']} / "
+            f"{config['caption_frames']} caption frames / "
+            f"Whisper {config['whisper_model'] if config['transcribe_audio'] else 'off'} / "
+            f"config {video_config_version(config)}"
+        )
+        return (config, status)
+
+
 class DatasetBuilderNode:
     @classmethod
     def INPUT_TYPES(cls):
@@ -464,6 +569,7 @@ class DatasetBuilderNode:
                 "cleanup_verifier": ("LORA_CLEANUP_VERIFIER",),
                 "analysis_provider": ("LORA_ANALYSIS_PROVIDER",),
                 "crop_provider": ("LORA_CROP_PROVIDER",),
+                "video_prep": ("LORA_VIDEO_PREP",),
                 "cleanup_override_images": (
                     "STRING",
                     {
@@ -501,6 +607,7 @@ class DatasetBuilderNode:
         cleanup_verifier=None,
         analysis_provider=None,
         crop_provider=None,
+        video_prep=None,
         max_items=0,
         unique_id=None,
     ):
@@ -570,6 +677,8 @@ class DatasetBuilderNode:
             cleanup_override_images=cleanup_override_images,
             progress_callback=progress_callback,
             interrupt_callback=interrupt_callback,
+            media_type=source.get("media_type", "images"),
+            video_config=video_prep,
         )
         try:
             result = engine.run(run_mode, max_items=0)
@@ -628,6 +737,8 @@ class DatasetRunSummaryNode:
         processing = int(status.get("processing", 0) or 0)
         inactive = int(status.get("inactive", 0) or 0)
         ready = bool(status.get("training_ready", False))
+        media_type = str(status.get("media_type") or "images")
+        item_label = "videos" if media_type == "videos" else "images"
 
         if ready:
             verdict = "TRAINING READY"
@@ -637,6 +748,7 @@ class DatasetRunSummaryNode:
             verdict = "NOT READY"
         lines = [
             verdict,
+            f"Media: {item_label}",
             f"Eligible pairs: {complete}/{eligible} complete",
             (
                 f"This run: {int(status.get('processed_this_run', 0) or 0)} processed, "
@@ -691,7 +803,7 @@ class DatasetRunSummaryNode:
                 (
                     "Quality: "
                     f"average {float(quality.get('average_score', 0) or 0):.1f}/100, "
-                    f"{int(quality.get('warning_item_count', 0) or 0)} image(s) with warnings"
+                    f"{int(quality.get('warning_item_count', 0) or 0)} item(s) with warnings"
                 ),
                 (
                     "Captions: "
@@ -781,7 +893,7 @@ class DatasetRunSummaryNode:
 
         if issues:
             lines.append("")
-            lines.append("Images needing attention or excluded from training:")
+            lines.append(f"{item_label.title()} needing attention or excluded from training:")
             for issue in issues:
                 image_name = issue.get("image") or "unknown image"
                 source_name = issue.get("source_image") or ""
@@ -820,7 +932,7 @@ class DatasetRunSummaryNode:
                 if issue.get("review_directory"):
                     lines.append(f"  Review: {issue['review_directory']}")
         else:
-            lines.extend(["", "No active image errors or exclusions."])
+            lines.extend(["", f"No active {item_label} errors or exclusions."])
 
         summary = "\n".join(lines)
         issues_json = json.dumps(issues, ensure_ascii=False, indent=2)
@@ -888,6 +1000,7 @@ NODE_CLASS_MAPPINGS = {
     "LoraDatasetSmartCropProvider": DatasetSmartCropProviderNode,
     "LoraDatasetKleinCleanupProvider": DatasetKleinCleanupProviderNode,
     "LoraDatasetCleanupVerifier": DatasetCleanupVerifierNode,
+    "LoraDatasetVideoPrep": DatasetVideoPrepNode,
     "LoraDatasetBuilder": DatasetBuilderNode,
     "LoraDatasetRunSummary": DatasetRunSummaryNode,
     "LoraDatasetAppReport": DatasetAppReportNode,
@@ -902,6 +1015,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LoraDatasetSmartCropProvider": "LoRA Dataset Smart Crop",
     "LoraDatasetKleinCleanupProvider": "LoRA Dataset Klein 9B Cleanup",
     "LoraDatasetCleanupVerifier": "LoRA Dataset Cleanup Verifier",
+    "LoraDatasetVideoPrep": "LoRA Dataset Video Prep (FFmpeg)",
     "LoraDatasetBuilder": "LoRA Dataset Builder",
     "LoraDatasetRunSummary": "LoRA Dataset Run Summary",
     "LoraDatasetAppReport": "LoRA Dataset App Report",

@@ -117,6 +117,7 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
         "LoraDatasetCleanupVerifier",
         "LoraDatasetImageAnalyzer",
         "LoraDatasetSmartCropProvider",
+        "LoraDatasetVideoPrep",
         "LoraDatasetBuilder",
         "LoraDatasetRunSummary",
         "LoraDatasetAppReport",
@@ -127,6 +128,7 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
         (entry[0], entry[1]) for entry in workflow["extra"]["linearData"]["inputs"]
     }
     assert (1, "source_directory") in selected_widgets
+    assert (1, "media_type") in selected_widgets
     assert (8, "destination_directory") in selected_widgets
     assert (8, "run_mode") in selected_widgets
     assert (8, "output_naming_mode") in selected_widgets
@@ -148,7 +150,8 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
     assert builder_inputs[9]["name"] == "cleanup_verifier"
     assert builder_inputs[10]["name"] == "analysis_provider"
     assert builder_inputs[11]["name"] == "crop_provider"
-    assert builder_inputs[12]["name"] == "cleanup_override_images"
+    assert builder_inputs[12]["name"] == "video_prep"
+    assert builder_inputs[13]["name"] == "cleanup_override_images"
     assert len(workflow["links"]) == workflow["last_link_id"]
 
 

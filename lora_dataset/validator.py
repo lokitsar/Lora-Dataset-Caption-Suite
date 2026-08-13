@@ -6,6 +6,7 @@ from PIL import Image
 
 from .captioning import normalize_caption_for_profile
 from .sidecar import IMAGE_EXTENSIONS
+from .video import VIDEO_EXTENSIONS, probe_video
 
 
 class DatasetValidator:
@@ -14,11 +15,53 @@ class DatasetValidator:
         warnings = []
         image_path = Path(record["output_image_path"])
         caption_path = Path(record["caption_path"])
+        is_video = image_path.suffix.casefold() in VIDEO_EXTENSIONS
+        video_metadata = None
 
         if not image_path.is_file():
-            errors.append("image_missing")
+            errors.append("video_missing" if is_video else "image_missing")
             image_dimensions = None
             aspect_ratio = None
+        elif is_video:
+            try:
+                crop = json.loads(record.get("crop_json") or "{}")
+                video_config = crop.get("settings") if isinstance(crop, dict) else None
+                video_metadata = probe_video(image_path, video_config)
+                image_dimensions = [video_metadata["width"], video_metadata["height"]]
+                aspect_ratio = round(video_metadata["width"] / video_metadata["height"], 6)
+                if min(image_dimensions) < 512:
+                    warnings.append("low_resolution_below_512")
+                if video_metadata["duration"] <= 0 or video_metadata["fps"] <= 0:
+                    errors.append("video_invalid_timing")
+                if isinstance(video_config, dict):
+                    target_frames = int(video_config.get("target_frame_count") or 0)
+                    if target_frames and video_metadata["frames"] != target_frames:
+                        errors.append("video_frame_count_mismatch")
+                    target_fps = float(video_config.get("fps") or 0)
+                    if target_fps and abs(video_metadata["fps"] - target_fps) > 0.01:
+                        errors.append("video_fps_mismatch")
+                    if (
+                        video_config.get("size_strategy") == "normalize_by_orientation"
+                        and video_config.get("resize_mode") in {"crop_to_fill", "pad_to_fit", "stretch"}
+                    ):
+                        prepared = crop.get("output") if isinstance(crop, dict) else {}
+                        orientation = (
+                            prepared.get("source_orientation")
+                            if isinstance(prepared, dict)
+                            else None
+                        )
+                        if orientation not in {"landscape", "portrait"}:
+                            orientation = "landscape" if video_metadata["width"] >= video_metadata["height"] else "portrait"
+                        expected = [
+                            int(video_config[f"{orientation}_width"]),
+                            int(video_config[f"{orientation}_height"]),
+                        ]
+                        if image_dimensions != expected:
+                            errors.append("video_orientation_size_mismatch")
+            except Exception:
+                errors.append("video_corrupt")
+                image_dimensions = None
+                aspect_ratio = None
         else:
             try:
                 with Image.open(image_path) as image:
@@ -59,6 +102,8 @@ class DatasetValidator:
             "caption": caption,
             "image_dimensions": image_dimensions,
             "aspect_ratio": aspect_ratio,
+            "media_type": "video" if is_video else "image",
+            "video": video_metadata,
         }
 
     def validate_dataset(self, dataset_directory, records, profile):
@@ -86,7 +131,7 @@ class DatasetValidator:
 
         actual_images = {
             path.resolve(strict=False) for path in dataset_path.iterdir()
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
         } if dataset_path.is_dir() else set()
         actual_captions = {
             path.resolve(strict=False) for path in dataset_path.glob("*.txt") if path.is_file()
@@ -105,9 +150,12 @@ class DatasetValidator:
             "removed",
             "verified_clean",
             "cleaned_universal",
+            "skipped_video",
         }
         watermark_audit_complete = all(
-            (
+            record.get("watermark_status") == "skipped_video"
+            if Path(record.get("output_image_path") or "").suffix.casefold() in VIDEO_EXTENSIONS
+            else (
                 record.get("watermark_status") == "verified_clean"
                 and record.get("cleanup_verification_status") == "verified_clean"
             )
@@ -141,13 +189,13 @@ class DatasetValidator:
             record.get("crop_status", "not_requested") for record in eligible_records
         )
         analysis_audit_complete = all(
-            str(record.get("analysis_status", "")).startswith("analyzed_")
+            str(record.get("analysis_status", "")).startswith(("analyzed_", "skipped_video"))
             for record in eligible_records
         )
         crop_audit_complete = all(
             record.get("crop_provider_version", "none") == "none"
             or str(record.get("crop_status", "")).startswith(
-                ("cropped_", "not_needed_", "skipped_")
+                ("cropped_", "prepared_", "not_needed_", "skipped_")
             )
             for record in eligible_records
         )
@@ -197,6 +245,7 @@ class DatasetValidator:
             "aspect_ratio_counts": dict(aspect_ratio_counts),
             "face_visible_items": face_visible_items,
             "person_visible_items": person_visible_items,
+            "media_type_counts": dict(Counter(result.get("media_type", "image") for result in item_results)),
             "orphan_images": sorted(str(path) for path in actual_images - known_images),
             "orphan_captions": sorted(str(path) for path in actual_captions - known_captions),
             "item_results": item_results,

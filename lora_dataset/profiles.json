@@ -1,5 +1,5 @@
 {
-  "schema_version": 6,
+  "schema_version": 7,
   "models": {
     "krea2": {
       "display_name": "Krea 2",
@@ -153,6 +153,47 @@
             "describe_environment": true,
             "omit_character_series_artist": true
           }
+        }
+      }
+    },
+    "minimax_h3": {
+      "display_name": "MiniMax H3",
+      "research_basis": [],
+      "defaults": {
+        "caption_style": "concise_temporal_natural_language",
+        "caption_output_format": "single_paragraph",
+        "caption_max_characters": 2200,
+        "caption_max_words": 150,
+        "positive_caption_only": true,
+        "preferred_resolutions": [1024],
+        "allowed_aspect_ratios": ["1:1", "3:4", "4:3", "9:16", "16:9"],
+        "crop_aspect_tolerance": 0.035,
+        "crop_subject_padding_fraction": 0.06,
+        "training_checkpoint": "MiniMax H3",
+        "trigger_required": false,
+        "exclude_exact_duplicates": true,
+        "near_duplicate_maximum_hamming_distance": 0,
+        "quality_minimum_dimension": 512,
+        "quality_minimum_megapixels": 0.35
+      },
+      "datasets": {
+        "character": {
+          "trigger_behavior": "contextual_prefix",
+          "crop_strategy": "video_temporal_identity",
+          "crop_max_removed_fraction": 0.35,
+          "caption_instruction": "Identify the recurring subject with only the visible appearance details needed to distinguish them. Describe clothing, expression, pose, framing, chronological body movement, interactions, camera behavior, relevant secondary motion, setting, and ending state. Avoid over-captioning invariant identity details that the trigger should carry."
+        },
+        "style": {
+          "trigger_behavior": "prefix",
+          "crop_strategy": "video_composition_preserving",
+          "crop_max_removed_fraction": 0.12,
+          "caption_instruction": "Describe visible subjects, scene content, composition, chronological action, camera behavior, and important secondary motion. Leave the shared target visual style primarily represented by the trigger unless a varying visible style attribute must be conditioned explicitly."
+        },
+        "concept": {
+          "trigger_behavior": "contextual_prefix",
+          "crop_strategy": "video_motion_concept",
+          "crop_max_removed_fraction": 0.25,
+          "caption_instruction": "Give particular attention to the repeated motion concept. Clearly distinguish subject motion from camera motion and describe the initial state, continuous motion progression, consequence or transition, and ending state. Include enough scene content to separate it from the motion without over-captioning irrelevant static details."
         }
       }
     }
