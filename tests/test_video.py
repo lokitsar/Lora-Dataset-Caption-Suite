@@ -31,6 +31,8 @@ from lora_dataset.video import (
     sample_video_frames,
 )
 from lora_dataset.transcription import (
+    WhisperTranscriber,
+    _serialize_segment,
     discover_original_video,
     harvester_start_time,
     transcript_for_window,
@@ -510,6 +512,117 @@ def test_harvester_timestamp_and_transcript_window_alignment(tmp_path):
         ]
     }
     assert transcript_for_window(transcript, 265.0, 5.0) == "Open the door. At the edge."
+
+
+def test_transcript_window_uses_only_reliable_overlapping_words():
+    transcript = {
+        "segments": [
+            {
+                "reliable": True,
+                "words": [
+                    {"start": 264.0, "end": 264.5, "word": " Ignore"},
+                    {"start": 265.1, "end": 265.5, "word": " Nose"},
+                    {"start": 265.5, "end": 266.0, "word": " dive!"},
+                    {"start": 271.0, "end": 271.5, "word": " Ignore"},
+                ],
+            },
+            {
+                "reliable": False,
+                "words": [{"start": 266.0, "end": 267.0, "word": " Hallucination"}],
+            },
+        ]
+    }
+    assert transcript_for_window(transcript, 265.0, 5.0) == "Nose dive!"
+
+
+def test_whisper_confidence_filter_rejects_weak_dialogue():
+    reliable = _serialize_segment({
+        "start": 4.0,
+        "end": 6.0,
+        "text": "Nose dive!",
+        "avg_logprob": -0.75,
+        "no_speech_prob": 0.01,
+        "compression_ratio": 0.7,
+        "words": [
+            {"start": 4.0, "end": 4.7, "word": " Nose", "probability": 0.48},
+            {"start": 4.7, "end": 5.4, "word": " dive!", "probability": 0.54},
+        ],
+    }, offset=3165.0, audio_duration=15.0)
+    assert reliable["reliable"] is True
+    assert reliable["words"][0]["start"] == 3169.0
+
+    weak = _serialize_segment({
+        "start": 4.0,
+        "end": 6.0,
+        "text": "What the hell is happening?",
+        "avg_logprob": -2.7,
+        "no_speech_prob": 0.01,
+        "compression_ratio": 0.7,
+        "words": [
+            {"start": 4.0, "end": 6.0, "word": " What", "probability": 0.12},
+        ],
+    }, offset=3165.0, audio_duration=15.0)
+    assert weak["reliable"] is False
+    assert "low_segment_probability" in weak["rejection_reasons"]
+    assert "low_word_probability" in weak["rejection_reasons"]
+
+
+def test_context_window_keeps_five_second_source_span_for_exact_frame_clip(tmp_path):
+    source = tmp_path / "movie.mkv"
+    source.write_bytes(b"movie")
+    transcriber = WhisperTranscriber(tmp_path / "cache")
+    with (
+        patch.object(transcriber, "_extract_dialogue_window") as extract,
+        patch.object(transcriber, "_transcribe_audio", return_value={"segments": []}),
+    ):
+        transcriber.transcribe_window(source, 3170.0, 107 / 24)
+
+    _, _, window_start, window_duration = extract.call_args.args
+    assert window_start == 3165.0
+    assert window_duration == pytest.approx(15.0)
+
+
+def test_video_audio_evidence_transcribes_context_window_from_original(tmp_path):
+    source_directory = tmp_path / "source"
+    source_directory.mkdir()
+    original = tmp_path / "movie.mkv"
+    original.write_bytes(b"movie")
+    clip = source_directory / "movie__0042_t0000265000.mp4"
+    clip.write_bytes(b"clip")
+    engine = DatasetEngine(
+        source_directory,
+        tmp_path / "project",
+        video_profile(),
+        media_type="videos",
+        video_config={"transcribe_audio": False},
+    )
+
+    class FakeTranscriber:
+        def __init__(self):
+            self.calls = []
+
+        def transcribe_window(self, path, start, duration):
+            self.calls.append((Path(path), start, duration))
+            return {
+                "segments": [{
+                    "reliable": True,
+                    "words": [
+                        {"start": 265.1, "end": 265.5, "word": " Nose"},
+                        {"start": 265.5, "end": 266.0, "word": " dive!"},
+                    ],
+                }]
+            }
+
+    engine.transcriber = FakeTranscriber()
+    engine.original_video_path = original
+    assert engine._video_audio_evidence(clip, {"duration": 5.0}) == "Nose dive!"
+    assert engine.transcriber.calls == [(original, 265.0, 5.0)]
+
+
+def test_video_defaults_to_contextual_whisper_model():
+    config = normalize_video_config({})
+    assert config["whisper_model"] == "large-v3-turbo"
+    assert config["schema_version"] == 5
 
 
 def test_clip_harvester_manifest_discovers_original_video(tmp_path):

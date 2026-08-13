@@ -141,6 +141,10 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
     )
     assert verifier_node["widgets_values"][1] == 0.3
     assert verifier_node["widgets_values"][-1] == "trust_klein"
+    video_node = next(
+        node for node in workflow["nodes"] if node["type"] == "LoraDatasetVideoPrep"
+    )
+    assert video_node["widgets_values"][23] == "large-v3-turbo"
     builder_node = next(
         node for node in workflow["nodes"] if node["type"] == "LoraDatasetBuilder"
     )

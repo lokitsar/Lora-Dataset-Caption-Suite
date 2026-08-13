@@ -144,13 +144,13 @@ class DatasetEngine:
         self.validator = DatasetValidator()
         self.transcriber = None
         self.original_video_path = None
-        self.original_transcript = None
         if self.video_config and self.video_config["transcribe_audio"]:
             self.transcriber = WhisperTranscriber(
                 self.transcripts_directory,
                 model_name=self.video_config["whisper_model"],
                 language=self.video_config["whisper_language"],
                 device=self.video_config["whisper_device"],
+                ffmpeg_path=self.video_config["ffmpeg_path"],
             )
             self.original_video_path = discover_original_video(
                 self.source_directory, self.video_config["original_video_path"]
@@ -288,15 +288,6 @@ class DatasetEngine:
         limit = max(0, int(max_items))
         work_total = int(self.manifest.summary().get("pending", 0) or 0)
         self._notify_progress(processed, work_total, "", failures, excluded, "running")
-
-        if self.transcriber is not None and self.original_video_path is not None:
-            self._notify_progress(
-                0, work_total, f"Whisper: {self.original_video_path.name}", failures, excluded, "running"
-            )
-            try:
-                self.original_transcript = self.transcriber.transcribe(self.original_video_path)
-            finally:
-                self.transcriber.close()
 
         while limit == 0 or processed < limit:
             if self.interrupt_callback is not None:
@@ -862,12 +853,13 @@ class DatasetEngine:
             return ""
         duration = float(metadata.get("duration") or self.video_config["duration"])
         clip_offset = float(self.video_config.get("start_time") or 0.0)
-        if self.original_transcript is not None:
-            harvested_start = harvester_start_time(source_path)
-            if harvested_start is not None:
-                return transcript_for_window(
-                    self.original_transcript, harvested_start + clip_offset, duration
-                )
+        harvested_start = harvester_start_time(source_path)
+        if self.original_video_path is not None and harvested_start is not None:
+            target_start = harvested_start + clip_offset
+            transcript = self.transcriber.transcribe_window(
+                self.original_video_path, target_start, duration
+            )
+            return transcript_for_window(transcript, target_start, duration)
         transcript = self.transcriber.transcribe(source_path)
         return transcript_for_window(transcript, clip_offset, duration)
 

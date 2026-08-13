@@ -220,7 +220,7 @@
       ],
       "title": "7 — Video Prep (used in video mode)",
       "properties": {"Node name for S&R": "LoraDatasetVideoPrep"},
-      "widgets_values": ["", 0.0, 5.0, 24.0, 1024, 1024, "crop_to_fill", "center", false, true, 18, "medium", 8, 0.35, 107, "normalize_by_orientation", 896, 512, 512, 896, "both", true, "", "small.en", "en", "auto"]
+      "widgets_values": ["", 0.0, 5.0, 24.0, 1024, 1024, "crop_to_fill", "center", false, true, 18, "medium", 8, 0.35, 107, "normalize_by_orientation", 896, 512, 512, 896, "both", true, "", "large-v3-turbo", "en", "auto"]
     },
     {
       "id": 8,
@@ -358,9 +358,9 @@
         [11, "portrait_width", {"description": "Exact width for portrait clips when normalizing by orientation."}],
         [11, "portrait_height", {"description": "Exact height for portrait clips when normalizing by orientation."}],
         [11, "orientation_filter", {"description": "Process both orientations or exclude portrait/landscape clips for separate datasets."}],
-        [11, "transcribe_audio", {"description": "Use Whisper dialogue and explicit audible transcript cues when writing each video caption."}],
-        [11, "original_video_path", {"description": "Recommended: original full movie. It is transcribed once and aligned through Clip Harvester timestamps. Blank uses harvester metadata or transcribes each clip."}],
-        [11, "whisper_model", {"description": "Whisper speech model. small.en is the recommended English accuracy/speed balance."}],
+        [11, "transcribe_audio", {"description": "Use confidence-filtered Whisper dialogue when writing each video caption."}],
+        [11, "original_video_path", {"description": "Recommended for Clip Harvester datasets. The app transcribes a short contextual window around each clip instead of the full movie."}],
+        [11, "whisper_model", {"description": "Whisper speech model. large-v3-turbo is recommended; low-confidence speech is discarded."}],
         [11, "whisper_language", {"description": "Speech language code, for example en. Leave blank for automatic detection."}],
         [11, "whisper_device", {"description": "Auto uses CUDA when available, otherwise CPU."}]
       ],
