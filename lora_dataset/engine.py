@@ -733,15 +733,13 @@ class DatasetEngine:
                 }
             caption = None
             validation_error = None
-            for attempt in range(2):
+            for attempt in range(3):
                 current_instruction = instruction
                 current_context = dict(caption_context)
                 if attempt:
-                    current_instruction += (
-                        "\n\nGenerate a fresh caption. The previous response failed output validation: "
-                        f"{validation_error}. Follow the required format and use present visual content only."
-                    )
+                    current_instruction += self._positive_validation_retry_instruction(attempt)
                     current_context["validation_retry"] = True
+                    current_context["validation_retry_attempt"] = attempt
                 raw_caption = self.caption_provider.caption(
                     output_path,
                     current_instruction,
@@ -752,7 +750,7 @@ class DatasetEngine:
                     break
                 except ValueError as error:
                     validation_error = str(error)
-                    if attempt:
+                    if attempt >= 2:
                         raise
             if caption is None:
                 raise ValueError(validation_error or "Caption validation failed")
@@ -811,15 +809,13 @@ class DatasetEngine:
             }
             caption = None
             validation_error = None
-            for attempt in range(2):
+            for attempt in range(3):
                 current_instruction = instruction
                 current_context = dict(caption_context)
                 if attempt:
-                    current_instruction += (
-                        "\n\nGenerate a fresh caption. The previous response failed output validation: "
-                        f"{validation_error}. Follow the required format and describe only visible events."
-                    )
+                    current_instruction += self._positive_validation_retry_instruction(attempt)
                     current_context["validation_retry"] = True
+                    current_context["validation_retry_attempt"] = attempt
                 raw_caption = self.caption_provider.caption_video(
                     output_path, current_instruction, current_context
                 )
@@ -828,7 +824,7 @@ class DatasetEngine:
                     break
                 except ValueError as error:
                     validation_error = str(error)
-                    if attempt:
+                    if attempt >= 2:
                         raise
             if caption is None:
                 raise ValueError(validation_error or "Video caption validation failed")
@@ -848,6 +844,18 @@ class DatasetEngine:
             caption = with_trigger
         self.sidecars.write(caption, output_path.name, output_path.parent, existing_file="overwrite")
         return caption_status
+
+    @staticmethod
+    def _positive_validation_retry_instruction(attempt):
+        if attempt <= 1:
+            return (
+                "\n\nGenerate a fresh caption in affirmative language. State present subjects, "
+                "objects, actions, camera movement, sounds, and dialogue using the required format."
+            )
+        return (
+            "\n\nCreate a concise replacement caption. Use affirmative sentences naming present "
+            "visual events and chronological motion. Return only the finished caption."
+        )
 
     def _video_audio_evidence(self, source_path, metadata):
         if self.transcriber is None:
