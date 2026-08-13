@@ -288,6 +288,8 @@ def test_reprocess_failed_preserves_complete_caption_and_also_adds_new_image(tmp
 def test_caption_normalization_strips_reasoning_and_rejects_bad_outputs():
     assert normalize_caption("<think>hidden</think>\nA visible red bicycle.") == "A visible red bicycle."
     assert normalize_caption("Final caption:\nA dog running on grass.") == "A dog running on grass."
+    assert normalize_caption('"A dog running on grass."') == "A dog running on grass."
+    assert normalize_caption('A man says, "No."') == 'A man says, "No."'
 
     for invalid in (
         "",

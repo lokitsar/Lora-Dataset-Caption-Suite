@@ -274,6 +274,25 @@ def test_h3_video_caption_validation_rejects_uncertainty_and_quality_tags(bad_ca
         normalize_video_caption_for_profile(bad_caption, video_profile())
 
 
+def test_video_caption_allows_negative_words_inside_quoted_dialogue():
+    caption = (
+        'A bald muscular man looks upward and speaks as the view cuts to another man, '
+        'who says, "Well, aren\'t we fierce?"'
+    )
+    assert normalize_video_caption_for_profile(caption, video_profile()) == caption
+
+
+def test_video_caption_still_rejects_negative_visual_prose_outside_dialogue():
+    caption = 'A throne room without guards as a man says, "Well, aren\'t we fierce?"'
+    with pytest.raises(ValueError, match="negative or absence language"):
+        normalize_video_caption_for_profile(caption, video_profile())
+
+
+def test_video_caption_allows_curly_quoted_negative_dialogue():
+    caption = "A man turns toward the speaker and asks, “Aren't we fierce?”"
+    assert normalize_video_caption_for_profile(caption, video_profile()) == caption
+
+
 def test_video_validation_gets_two_distinct_affirmative_retries(tmp_path):
     class SequenceVideoCaptioner(CaptionProvider):
         def __init__(self):
