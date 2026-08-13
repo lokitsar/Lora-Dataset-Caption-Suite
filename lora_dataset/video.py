@@ -94,7 +94,7 @@ def normalize_video_config(config=None):
         # Duration and padding become derived behavior in exact-frame mode.
         duration = target_frame_count / fps
         pad_short_video = True
-    whisper_model = str(raw.get("whisper_model", "small.en"))
+    whisper_model = str(raw.get("whisper_model", "large-v3-turbo"))
     whisper_device = str(raw.get("whisper_device", "auto"))
     if whisper_model not in WHISPER_MODELS:
         raise ValueError(f"Unknown Whisper model: {whisper_model}")
@@ -127,7 +127,7 @@ def normalize_video_config(config=None):
         "whisper_model": whisper_model,
         "whisper_language": str(raw.get("whisper_language", "en")).strip(),
         "whisper_device": whisper_device,
-        "schema_version": 4,
+        "schema_version": 5,
     }
 
 

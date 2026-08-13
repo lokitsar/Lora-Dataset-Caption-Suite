@@ -479,14 +479,17 @@ class DatasetVideoPrepNode:
                 "orientation_filter": (list(ORIENTATION_FILTERS),),
                 "transcribe_audio": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "Use Whisper dialogue and audible transcript cues as additional caption evidence.",
+                    "tooltip": "Use confidence-filtered Whisper dialogue as additional caption evidence.",
                 }),
                 "original_video_path": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "placeholder": "Recommended: original full movie; blank uses harvester metadata or each clip",
+                    "placeholder": "Original movie enables contextual clip transcription; blank transcribes each clip",
                 }),
-                "whisper_model": (list(WHISPER_MODELS), {"default": "small.en"}),
+                "whisper_model": (list(WHISPER_MODELS), {
+                    "default": "large-v3-turbo",
+                    "tooltip": "large-v3-turbo is recommended. Weak transcript segments are discarded instead of added to captions.",
+                }),
                 "whisper_language": ("STRING", {"default": "en", "multiline": False}),
                 "whisper_device": (list(WHISPER_DEVICES), {"default": "auto"}),
             }

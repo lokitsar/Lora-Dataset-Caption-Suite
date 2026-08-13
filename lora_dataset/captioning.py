@@ -44,7 +44,7 @@ For motion-concept training, give particular attention to the demonstrated motio
 
 For a stationary-camera clip, explicitly state that the camera remains stationary when this helps distinguish subject motion from camera motion. For a camera-motion concept, distinguish camera movement from subject movement.
 
-Caption only supported evidence, not assumptions. Do not use uncertain language such as "appears to," "seems to," "probably," or "possibly." Do not add intentions, emotions that are not visibly expressed, production metadata, quality ratings, or speculative context. When reliable transcript evidence is supplied, include all clearly spoken words in quotation marks and place them in the correct point of the chronological action. Mention music, singing, vocalizations, or sound effects only when the transcript evidence explicitly identifies them. Treat automatic transcripts as fallible: omit garbled text and never invent a speaker identity.
+Caption only supported evidence, not assumptions. Do not use uncertain language such as "appears to," "seems to," "probably," or "possibly." Do not add intentions, emotions that are not visibly expressed, production metadata, quality ratings, or speculative context. Never infer or invent dialogue from facial expressions, mouth movement, subtitles, or visual frames. When reliable transcript evidence is supplied, include all clearly spoken words in quotation marks and place them in the correct point of the chronological action. Mention music, singing, vocalizations, or sound effects only when the transcript evidence explicitly identifies them. Treat automatic transcripts as fallible: omit garbled text and never invent a speaker identity.
 
 Do not use generic quality tags such as "masterpiece," "best quality," "4K," "highly detailed," or "professional." Do not describe a target visual style unless that style is intentionally meant to be caption-conditioned.
 
@@ -340,14 +340,17 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
             user_content.append({
                 "type": "text",
                 "text": (
-                    "Automatic Whisper transcript aligned to this clip. Use it as audio evidence; "
-                    "it may contain recognition errors:\n" + audio_evidence
+                    "Confidence-filtered Whisper dialogue aligned to this clip. Use only these "
+                    "words as dialogue evidence; do not infer additional speech:\n" + audio_evidence
                 ),
             })
         else:
             user_content.append({
                 "type": "text",
-                "text": "Use the ordered visual frames as the complete evidence for this caption.",
+                "text": (
+                    "Quote dialogue exclusively from supplied audio evidence. "
+                    "The ordered visual frames are the complete evidence for this caption."
+                ),
             })
         for index, (media_type, image_b64) in enumerate(encoded, 1):
             user_content.extend([
