@@ -118,7 +118,11 @@ def strip_reasoning(text):
         candidate = value[matches[-1].end():].strip()
         if candidate:
             value = candidate
-    return value.strip().strip("`").strip().strip('"\u201c\u201d\'')
+    value = value.strip().strip("`").strip()
+    for opening, closing in (("\"", "\""), ("\u201c", "\u201d"), ("'", "'"), ("\u2018", "\u2019")):
+        if len(value) >= 2 and value.startswith(opening) and value.endswith(closing):
+            return value[1:-1].strip()
+    return value
 
 
 def normalize_caption(text, max_characters=4000):
@@ -143,13 +147,20 @@ def normalize_caption(text, max_characters=4000):
 
 
 def validate_positive_only_caption(caption):
+    # Positive-only applies to the model's visual description, not verbatim
+    # dialogue. Spoken lines can legitimately contain words such as "no",
+    # "not", or "aren't" and the video policy requires preserving them.
+    visual_prose = re.sub(r'"(?:\\.|[^"\\])*"|“[^”]*”', " ", caption)
     negative_assertions = (
         r"\b(?:no|not|never|without|none|nothing|nobody)\b",
         r"\b(?:isn't|aren't|wasn't|weren't|doesn't|don't|didn't|can't|cannot)\b",
         r"\b(?:free|clear)\s+of\b",
         r"\b(?:absent|removed|eliminated|missing|lacks?|lacking)\b",
     )
-    if any(re.search(pattern, caption, flags=re.IGNORECASE) for pattern in negative_assertions):
+    if any(
+        re.search(pattern, visual_prose, flags=re.IGNORECASE)
+        for pattern in negative_assertions
+    ):
         raise ValueError("Caption contains negative or absence language instead of present visual content")
     return caption
 
