@@ -374,6 +374,9 @@ def test_invalid_negative_caption_is_retried_once_with_fresh_instruction(tmp_pat
     assert result["complete"] == 1
     assert len(provider.calls) == 2
     assert provider.calls[1]["context"]["validation_retry"] is True
+    assert provider.calls[1]["context"]["validation_retry_attempt"] == 1
+    assert "negative or absence language" not in provider.calls[1]["instruction"]
+    assert "affirmative language" in provider.calls[1]["instruction"]
     record = DatasetManifest(result["manifest"]).records()[0]
     assert record["caption_status"] == "generated_after_validation_retry"
     assert (destination / "dataset" / "sample.txt").read_text(encoding="utf-8") == (

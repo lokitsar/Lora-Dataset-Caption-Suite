@@ -274,6 +274,52 @@ def test_h3_video_caption_validation_rejects_uncertainty_and_quality_tags(bad_ca
         normalize_video_caption_for_profile(bad_caption, video_profile())
 
 
+def test_video_validation_gets_two_distinct_affirmative_retries(tmp_path):
+    class SequenceVideoCaptioner(CaptionProvider):
+        def __init__(self):
+            self.responses = [
+                "A street without pedestrians.",
+                "No pedestrians occupy the street.",
+                "An empty street stretches beneath glowing signs as the camera moves forward.",
+            ]
+            self.calls = []
+
+        def caption(self, image_path, instruction, context=None):
+            raise NotImplementedError
+
+        def caption_video(self, video_path, instruction, context=None):
+            self.calls.append({"instruction": instruction, "context": context})
+            return self.responses.pop(0)
+
+    source = tmp_path / "source"
+    destination = tmp_path / "project"
+    make_video(source / "clip.mp4")
+    provider = SequenceVideoCaptioner()
+    result = DatasetEngine(
+        source,
+        destination,
+        video_profile(),
+        caption_provider=provider,
+        caption_provider_version="sequence-video-v1",
+        media_type="videos",
+        video_config={
+            "duration": 0.75,
+            "fps": 12,
+            "size_strategy": "single_size",
+            "resize_mode": "keep_native",
+            "caption_frames": 2,
+            "caption_megapixels": 0.1,
+        },
+    ).run("resume")
+
+    assert result["complete"] == 1
+    assert len(provider.calls) == 3
+    assert provider.calls[1]["context"]["validation_retry_attempt"] == 1
+    assert provider.calls[2]["context"]["validation_retry_attempt"] == 2
+    assert "negative or absence language" not in provider.calls[1]["instruction"]
+    assert provider.calls[1]["instruction"] != provider.calls[2]["instruction"]
+
+
 def test_video_trigger_is_forced_to_the_exact_caption_prefix():
     recipe = video_profile()
     assert apply_video_trigger("a subject moves, motion_token", recipe) == (
