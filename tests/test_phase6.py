@@ -155,6 +155,16 @@ def test_phase6_app_workflow_is_preconfigured_for_official_app_mode():
     assert len(workflow["links"]) == workflow["last_link_id"]
 
 
+def test_caption_model_picker_commits_selection_through_comfy_widget_callbacks():
+    script_path = Path(__file__).parents[1] / "js" / "lora_dataset_builder.js"
+    script = script_path.read_text(encoding="utf-8")
+    assert 'modelSelect.addEventListener("input", applySelectedModel)' in script
+    assert 'modelSelect.addEventListener("change", applySelectedModel)' in script
+    assert "commitWidgetValue(node, modelNameWidget, modelSelect.value)" in script
+    assert "widget.callback?.(value, app.canvas, node, undefined, undefined)" in script
+    assert "node.onWidgetChanged?.(widget.name, value, previousValue, widget)" in script
+
+
 def test_cleanup_verifier_uses_conservative_watermark_confidence_default():
     confidence = DatasetCleanupVerifierNode.INPUT_TYPES()["required"]["confidence"]
     assert confidence[1]["default"] == 0.3
