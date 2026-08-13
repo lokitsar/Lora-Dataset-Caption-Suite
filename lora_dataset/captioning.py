@@ -1,8 +1,11 @@
 import base64
 import hashlib
+import http.client
 import io
 import json
 import re
+import socket
+import time
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -20,6 +23,10 @@ DEFAULT_PROVIDER_URLS = {
     "NanoGPT": "https://nano-gpt.com/api/v1",
     "Kobold": "http://localhost:5001/v1",
 }
+
+NANOGPT_VIDEO_BASE64_BUDGET = 3_250_000
+NANOGPT_VIDEO_JPEG_QUALITIES = (90, 82, 74, 66, 58, 50)
+TRANSIENT_HTTP_CODES = {408, 425, 429, 500, 502, 503, 504}
 
 SECRET_FIELDS = {"api_key", "openrouter_key", "nanogpt_key"}
 
@@ -315,10 +322,7 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
             megapixels=video_config.get("caption_megapixels", 0.35),
             config=video_config,
         )
-        encoded = []
-        for frame in frames:
-            prepared = scale_for_provider(frame, self.backend)
-            encoded.append(encode_png(prepared))
+        encoded, frame_encoding = self._encode_video_frames(frames)
         user_content = [{"type": "text", "text": instruction}]
         audio_evidence = str(context.get("audio_evidence") or "").strip()
         if audio_evidence:
@@ -332,12 +336,12 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
         else:
             user_content.append({
                 "type": "text",
-                "text": "No reliable speech or audio transcript evidence was detected for this clip.",
+                "text": "Use the ordered visual frames as the complete evidence for this caption.",
             })
-        for index, image_b64 in enumerate(encoded, 1):
+        for index, (media_type, image_b64) in enumerate(encoded, 1):
             user_content.extend([
                 {"type": "text", "text": f"Ordered video frame {index} of {len(encoded)}:"},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_b64}"}},
             ])
         system = (
             "You write direct positive video-training prompts from ordered visual evidence and aligned "
@@ -363,10 +367,51 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
             self._unload_ollama()
         print(
             f"[LoRA Dataset Captioner] Captioned {Path(video_path).name} with {self.backend} "
-            f"using {len(encoded)} ordered frames ({metadata['duration']:.2f}s)",
+            f"using {len(encoded)} ordered {frame_encoding} frames ({metadata['duration']:.2f}s)",
             flush=True,
         )
         return result
+
+    def _encode_video_frames(self, frames):
+        prepared = [scale_for_provider(frame, self.backend).convert("RGB") for frame in frames]
+        if self.backend != "NanoGPT":
+            return [("image/png", encode_png(frame)) for frame in prepared], "PNG"
+
+        # NanoGPT rejects uploads around 4 MB. Keep the actual base64 image data
+        # comfortably below that boundary so the JSON envelope and transcript
+        # still have room. JPEG is dramatically smaller than PNG for movie frames.
+        working = prepared
+        for _resize_attempt in range(10):
+            for quality in NANOGPT_VIDEO_JPEG_QUALITIES:
+                encoded = [self._encode_jpeg(frame, quality) for frame in working]
+                if sum(len(image_b64) for image_b64 in encoded) <= NANOGPT_VIDEO_BASE64_BUDGET:
+                    width, height = working[0].size
+                    return (
+                        [("image/jpeg", image_b64) for image_b64 in encoded],
+                        f"JPEG q{quality} {width}x{height}",
+                    )
+            working = [
+                frame.resize(
+                    (max(2, int(frame.width * 0.8)), max(2, int(frame.height * 0.8))),
+                    Image.Resampling.LANCZOS,
+                )
+                for frame in working
+            ]
+        raise RuntimeError(
+            "Could not compress NanoGPT video frames below the safe upload limit"
+        )
+
+    @staticmethod
+    def _encode_jpeg(image, quality):
+        buffer = io.BytesIO()
+        image.save(
+            buffer,
+            format="JPEG",
+            quality=quality,
+            optimize=True,
+            subsampling=2,
+        )
+        return base64.b64encode(buffer.getvalue()).decode("ascii")
 
     def _encode_image(self, image_path):
         with Image.open(image_path) as image:
@@ -422,9 +467,39 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
             headers=self._headers(),
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=int(self.config.get("timeout", 120))) as response:
-            result = json.loads(response.read().decode("utf-8"))
+        result = self._request_json_with_retries(request)
         return self._message_text(result["choices"][0]["message"])
+
+    def _request_json_with_retries(self, request):
+        attempts = max(1, int(self.config.get("request_attempts", 3)))
+        timeout = int(self.config.get("timeout", 120))
+        for attempt in range(attempts):
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError as error:
+                if error.code not in TRANSIENT_HTTP_CODES or attempt + 1 >= attempts:
+                    raise
+                detail = f"HTTP {error.code}"
+            except (
+                http.client.RemoteDisconnected,
+                ConnectionAbortedError,
+                ConnectionResetError,
+                TimeoutError,
+                socket.timeout,
+                urllib.error.URLError,
+            ) as error:
+                if attempt + 1 >= attempts:
+                    raise
+                detail = str(error)
+            delay = min(4, 2 ** attempt)
+            print(
+                f"[LoRA Dataset Captioner] Transient {self.backend} request failure "
+                f"({detail}); retrying in {delay}s ({attempt + 2}/{attempts})",
+                flush=True,
+            )
+            time.sleep(delay)
+        raise RuntimeError(f"Caption request failed after {attempts} attempts")
 
     def _ollama_request(self, instruction, image_b64):
         base = self._base_url()
