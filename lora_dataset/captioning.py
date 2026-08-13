@@ -21,6 +21,9 @@ DEFAULT_PROVIDER_URLS = {
     "Kobold": "http://localhost:5001/v1",
 }
 
+NANOGPT_VIDEO_BASE64_BUDGET = 3_250_000
+NANOGPT_VIDEO_JPEG_QUALITIES = (90, 82, 74, 66, 58, 50)
+
 SECRET_FIELDS = {"api_key", "openrouter_key", "nanogpt_key"}
 
 MINIMAX_H3_VIDEO_CAPTION_POLICY = """You are a video dataset captioning model for MiniMax H3 LoRA training.
@@ -315,10 +318,7 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
             megapixels=video_config.get("caption_megapixels", 0.35),
             config=video_config,
         )
-        encoded = []
-        for frame in frames:
-            prepared = scale_for_provider(frame, self.backend)
-            encoded.append(encode_png(prepared))
+        encoded, frame_encoding = self._encode_video_frames(frames)
         user_content = [{"type": "text", "text": instruction}]
         audio_evidence = str(context.get("audio_evidence") or "").strip()
         if audio_evidence:
@@ -334,10 +334,10 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
                 "type": "text",
                 "text": "No reliable speech or audio transcript evidence was detected for this clip.",
             })
-        for index, image_b64 in enumerate(encoded, 1):
+        for index, (media_type, image_b64) in enumerate(encoded, 1):
             user_content.extend([
                 {"type": "text", "text": f"Ordered video frame {index} of {len(encoded)}:"},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
+                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_b64}"}},
             ])
         system = (
             "You write direct positive video-training prompts from ordered visual evidence and aligned "
@@ -363,10 +363,51 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
             self._unload_ollama()
         print(
             f"[LoRA Dataset Captioner] Captioned {Path(video_path).name} with {self.backend} "
-            f"using {len(encoded)} ordered frames ({metadata['duration']:.2f}s)",
+            f"using {len(encoded)} ordered {frame_encoding} frames ({metadata['duration']:.2f}s)",
             flush=True,
         )
         return result
+
+    def _encode_video_frames(self, frames):
+        prepared = [scale_for_provider(frame, self.backend).convert("RGB") for frame in frames]
+        if self.backend != "NanoGPT":
+            return [("image/png", encode_png(frame)) for frame in prepared], "PNG"
+
+        # NanoGPT rejects uploads around 4 MB. Keep the actual base64 image data
+        # comfortably below that boundary so the JSON envelope and transcript
+        # still have room. JPEG is dramatically smaller than PNG for movie frames.
+        working = prepared
+        for _resize_attempt in range(10):
+            for quality in NANOGPT_VIDEO_JPEG_QUALITIES:
+                encoded = [self._encode_jpeg(frame, quality) for frame in working]
+                if sum(len(image_b64) for image_b64 in encoded) <= NANOGPT_VIDEO_BASE64_BUDGET:
+                    width, height = working[0].size
+                    return (
+                        [("image/jpeg", image_b64) for image_b64 in encoded],
+                        f"JPEG q{quality} {width}x{height}",
+                    )
+            working = [
+                frame.resize(
+                    (max(2, int(frame.width * 0.8)), max(2, int(frame.height * 0.8))),
+                    Image.Resampling.LANCZOS,
+                )
+                for frame in working
+            ]
+        raise RuntimeError(
+            "Could not compress NanoGPT video frames below the safe upload limit"
+        )
+
+    @staticmethod
+    def _encode_jpeg(image, quality):
+        buffer = io.BytesIO()
+        image.save(
+            buffer,
+            format="JPEG",
+            quality=quality,
+            optimize=True,
+            subsampling=2,
+        )
+        return base64.b64encode(buffer.getvalue()).decode("ascii")
 
     def _encode_image(self, image_path):
         with Image.open(image_path) as image:

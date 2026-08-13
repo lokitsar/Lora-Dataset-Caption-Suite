@@ -1,3 +1,5 @@
+import base64
+import io
 import json
 import shutil
 import subprocess
@@ -9,6 +11,7 @@ from unittest.mock import patch
 
 from lora_dataset.captioning import (
     CaptionProvider,
+    NANOGPT_VIDEO_BASE64_BUDGET,
     OpenAICompatibleCaptionProvider,
     apply_video_trigger,
     build_caption_instruction,
@@ -313,6 +316,51 @@ def test_openai_video_caption_request_contains_ordered_frame_images():
         "Ordered video frame 2 of 3:",
         "Ordered video frame 3 of 3:",
     ]
+
+
+def test_nanogpt_video_frames_use_bounded_jpeg_payload():
+    provider = OpenAICompatibleCaptionProvider({
+        "backend": "NanoGPT",
+        "api_url": "https://example.invalid/v1",
+        "api_key": "test",
+        "model_name": "vision-model",
+    })
+    frames = [
+        Image.effect_noise((1024, 768), 100).convert("RGB")
+        for _ in range(8)
+    ]
+
+    encoded, description = provider._encode_video_frames(frames)
+
+    assert {media_type for media_type, _image_b64 in encoded} == {"image/jpeg"}
+    assert sum(len(image_b64) for _media_type, image_b64 in encoded) <= (
+        NANOGPT_VIDEO_BASE64_BUDGET
+    )
+    assert description.startswith("JPEG q")
+    with Image.open(io.BytesIO(base64.b64decode(encoded[0][1]))) as image:
+        assert image.format == "JPEG"
+
+
+def test_nanogpt_video_request_labels_compressed_frames_as_jpeg():
+    provider = OpenAICompatibleCaptionProvider({
+        "backend": "NanoGPT",
+        "api_url": "https://example.invalid/v1",
+        "api_key": "test",
+        "model_name": "vision-model",
+    })
+    captured = {}
+    provider._openai_request = lambda messages: captured.setdefault("messages", messages) and "motion"
+    frames = [Image.new("RGB", (32, 24), "black") for _ in range(2)]
+    with patch("lora_dataset.captioning.sample_video_frames", return_value=(frames, {"duration": 5.0})):
+        provider.caption_video("clip.mp4", "Describe the clip.", {"video_config": {}})
+
+    image_urls = [
+        part["image_url"]["url"]
+        for part in captured["messages"][1]["content"]
+        if part["type"] == "image_url"
+    ]
+    assert image_urls
+    assert all(url.startswith("data:image/jpeg;base64,") for url in image_urls)
 
 
 def test_openai_video_caption_request_includes_whisper_evidence():
