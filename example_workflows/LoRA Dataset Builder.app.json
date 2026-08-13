@@ -220,7 +220,7 @@
       ],
       "title": "7 — Video Prep (used in video mode)",
       "properties": {"Node name for S&R": "LoraDatasetVideoPrep"},
-      "widgets_values": ["", 0.0, 5.0, 24.0, 1024, 1024, "crop_to_fill", "center", false, false, 18, "medium", 8, 0.35, 107, "normalize_by_orientation", 896, 512, 512, 896, "both", true, "", "small.en", "en", "auto"]
+      "widgets_values": ["", 0.0, 5.0, 24.0, 1024, 1024, "crop_to_fill", "center", false, true, 18, "medium", 8, 0.35, 107, "normalize_by_orientation", 896, 512, 512, 896, "both", true, "", "small.en", "en", "auto"]
     },
     {
       "id": 8,
@@ -346,7 +346,7 @@
         [11, "resize_mode", {"description": "Keep native dimensions, crop to fill, fit within, pad to fit, or stretch."}],
         [11, "crop_position", {"description": "Crop anchor used only by crop_to_fill."}],
         [11, "pad_short_video", {"description": "Freeze the final frame if the source is shorter than duration."}],
-        [11, "keep_audio", {"description": "Preserve source audio as AAC. Most visual LoRA datasets can leave this off."}],
+        [11, "keep_audio", {"description": "Preserve source audio as AAC stereo. Keep this on for audio-aware H3 datasets."}],
         [11, "crf", {"description": "H.264 quality: lower is higher quality. Default: 18."}],
         [11, "encoder_preset", {"description": "FFmpeg speed/compression tradeoff."}],
         [11, "caption_frames", {"description": "Ordered frames sampled across each prepared clip for one caption request."}],

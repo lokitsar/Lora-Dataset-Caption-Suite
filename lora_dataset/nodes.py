@@ -458,7 +458,7 @@ class DatasetVideoPrepNode:
                 "resize_mode": (list(RESIZE_MODES), {"default": "crop_to_fill"}),
                 "crop_position": (list(CROP_POSITIONS),),
                 "pad_short_video": ("BOOLEAN", {"default": False}),
-                "keep_audio": ("BOOLEAN", {"default": False}),
+                "keep_audio": ("BOOLEAN", {"default": True}),
                 "crf": ("INT", {"default": 18, "min": 0, "max": 51}),
                 "encoder_preset": (list(ENCODER_PRESETS),),
                 "caption_frames": ("INT", {"default": 8, "min": 2, "max": 32}),
