@@ -7,7 +7,13 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from .analysis import BasicAnalysisProvider
-from .captioning import apply_trigger, build_caption_instruction, normalize_caption_for_profile
+from .captioning import (
+    apply_trigger,
+    apply_video_trigger,
+    build_caption_instruction,
+    normalize_caption_for_profile,
+    normalize_video_caption_for_profile,
+)
 from .cleanup_verification import prepare_fidelity_reference
 from .intelligence import build_dataset_report
 from .manifest import DatasetManifest
@@ -15,6 +21,13 @@ from .path_utils import ensure_directory, normalized_path
 from .sidecar import DatasetSidecarWriter
 from .source import DatasetSource
 from .validator import DatasetValidator
+from .video import (
+    VIDEO_EXTENSIONS,
+    VideoOrientationExcluded,
+    normalize_video_config,
+    prepare_video,
+    video_config_version,
+)
 
 
 class DatasetItemExcluded(Exception):
@@ -69,6 +82,8 @@ class DatasetEngine:
         cleanup_override_images="",
         progress_callback=None,
         interrupt_callback=None,
+        media_type="images",
+        video_config=None,
     ):
         self.source_directory = normalized_path(source_directory)
         self.destination_directory = normalized_path(destination_directory)
@@ -76,16 +91,28 @@ class DatasetEngine:
             raise ValueError("Source and destination directories must be different")
 
         self.profile = profile
+        self.media_type = "videos" if str(media_type).casefold() in {"video", "videos"} else "images"
+        self.video_config = normalize_video_config(video_config) if self.media_type == "videos" else None
+        self.video_config_version = video_config_version(self.video_config) if self.video_config else "none"
         self.caption_provider = caption_provider
-        self.caption_provider_version = caption_provider_version
+        self.caption_provider_version = (
+            f"{caption_provider_version}+video-{self.video_config_version}"
+            if self.video_config else caption_provider_version
+        )
         self.cleanup_provider = cleanup_provider
         self.cleanup_provider_version = cleanup_provider_version
         self.cleanup_verifier = cleanup_verifier
         self.cleanup_verifier_version = cleanup_verifier_version
         self.analysis_provider = analysis_provider or BasicAnalysisProvider()
-        self.analysis_provider_version = analysis_provider_version
+        self.analysis_provider_version = (
+            f"{analysis_provider_version}+video-{self.video_config_version}"
+            if self.video_config else analysis_provider_version
+        )
         self.crop_provider = crop_provider
-        self.crop_provider_version = crop_provider_version
+        self.crop_provider_version = (
+            f"{crop_provider_version}+video-{self.video_config_version}"
+            if self.video_config else crop_provider_version
+        )
         self.force_rebuild_revision = int(force_rebuild_revision)
         if output_naming_mode not in {"preserve_source_names", "lora_name_numbered"}:
             raise ValueError(f"Unknown output naming mode: {output_naming_mode}")
@@ -104,6 +131,7 @@ class DatasetEngine:
             self.source_directory,
             recursive=recursive,
             excluded_directories=[self.destination_directory],
+            extensions=VIDEO_EXTENSIONS if self.media_type == "videos" else None,
         )
         self.sidecars = DatasetSidecarWriter()
         self.validator = DatasetValidator()
@@ -155,12 +183,13 @@ class DatasetEngine:
         return items
 
     def _assign_output_paths(self, items):
+        output_suffix = ".mp4" if self.media_type == "videos" else ".png"
         if self.output_naming_mode == "lora_name_numbered":
             sequences = self.manifest.ensure_naming_sequences(items)
             width = max(4, len(str(max(sequences.values(), default=0))))
             return {
                 item.item_id: (
-                    self.dataset_directory / f"{self.lora_name}_{sequences[item.item_id]:0{width}d}.png",
+                    self.dataset_directory / f"{self.lora_name}_{sequences[item.item_id]:0{width}d}{output_suffix}",
                     self.dataset_directory / f"{self.lora_name}_{sequences[item.item_id]:0{width}d}.txt",
                     sequences[item.item_id],
                 )
@@ -178,7 +207,7 @@ class DatasetEngine:
                 while output_stem.casefold() in used_stems:
                     output_stem = f"{output_stem}-x"
             used_stems.add(output_stem.casefold())
-            output_image = self.dataset_directory / f"{output_stem}.png"
+            output_image = self.dataset_directory / f"{output_stem}{output_suffix}"
             caption_path = self.dataset_directory / f"{output_stem}.txt"
             assignments[item.item_id] = (output_image, caption_path, None)
         return assignments
@@ -210,6 +239,13 @@ class DatasetEngine:
 
     def run(self, mode="resume", max_items=0):
         trigger = self.profile.get("trigger", "").strip()
+        profile_model = self.profile.get("model")
+        if self.media_type == "videos" and profile_model != "minimax_h3":
+            raise ValueError(
+                "Video mode uses the MiniMax H3 caption policy. Select MiniMax H3 in LoRA Dataset Profile."
+            )
+        if self.media_type == "images" and profile_model == "minimax_h3":
+            raise ValueError("MiniMax H3 is a video dataset profile. Select videos in LoRA Dataset Source.")
         if self.profile.get("settings", {}).get("trigger_required", False) and not trigger:
             raise ValueError("This dataset profile requires a trigger word")
 
@@ -267,6 +303,8 @@ class DatasetEngine:
             record["source_relative_path"] for record in all_records if not record["active"]
         ]
         result = {
+            "media_type": self.media_type,
+            "video_config": self.video_config,
             "source_directory": str(self.source_directory),
             "destination_directory": str(self.destination_directory),
             "manifest": str(self.manifest.path),
@@ -420,7 +458,7 @@ class DatasetEngine:
             if record.get("status") not in {"failed", "excluded"}:
                 continue
             cleanup_status = record.get("cleanup_verification_status", "not_requested")
-            if cleanup_status not in {"not_requested", "verification_processing", "verified_clean"}:
+            if cleanup_status not in {"not_requested", "verification_processing", "verified_clean", "skipped_video"}:
                 stage = "cleanup_verification"
             elif record.get("review_status") == "exact_duplicate_excluded":
                 stage = "duplicate_detection"
@@ -507,6 +545,8 @@ class DatasetEngine:
         return moved
 
     def _process_record(self, record):
+        if self.media_type == "videos":
+            return self._process_video_record(record)
         source_path = Path(record["source_path"])
         output_path = Path(record["output_image_path"])
         ensure_directory(output_path.parent)
@@ -697,6 +737,79 @@ class DatasetEngine:
                 caption_status = "trigger_placeholder"
 
             with_trigger = apply_trigger(caption, self.profile)
+            if with_trigger != caption:
+                caption_status = f"{caption_status}_with_trigger"
+            caption = with_trigger
+        self.sidecars.write(caption, output_path.name, output_path.parent, existing_file="overwrite")
+        return caption_status
+
+    def _process_video_record(self, record):
+        source_path = Path(record["source_path"])
+        output_path = Path(record["output_image_path"])
+        try:
+            metadata = prepare_video(source_path, output_path, self.video_config)
+        except VideoOrientationExcluded as error:
+            self.manifest.mark_excluded(record["item_id"], str(error), "orientation_filtered")
+            raise DatasetItemExcluded(str(error)) from error
+        self.manifest.mark_watermark_status(record["item_id"], "skipped_video")
+        self.manifest.mark_cleanup_verification(
+            record["item_id"], "skipped_video", {"media_type": "video"}, "not_requested"
+        )
+        self.manifest.mark_analysis(
+            record["item_id"],
+            "skipped_video",
+            {"provider": "ffprobe", "media_type": "video", "video": metadata},
+        )
+        self.manifest.mark_crop(
+            record["item_id"],
+            "cropped_ffmpeg" if self.video_config["resize_mode"] == "crop_to_fill" else "prepared_ffmpeg",
+            {"provider": "ffmpeg", "settings": self.video_config, "output": metadata},
+        )
+
+        if self.caption_provider is not None:
+            instruction = build_caption_instruction(self.profile, media_type="video")
+            caption_context = {
+                "source_path": str(source_path),
+                "dataset_type": self.profile.get("dataset_type"),
+                "profile_id": self.profile.get("profile_id"),
+                "media_type": "video",
+                "video": metadata,
+                "video_config": self.video_config,
+            }
+            caption = None
+            validation_error = None
+            for attempt in range(2):
+                current_instruction = instruction
+                current_context = dict(caption_context)
+                if attempt:
+                    current_instruction += (
+                        "\n\nGenerate a fresh caption. The previous response failed output validation: "
+                        f"{validation_error}. Follow the required format and describe only visible events."
+                    )
+                    current_context["validation_retry"] = True
+                raw_caption = self.caption_provider.caption_video(
+                    output_path, current_instruction, current_context
+                )
+                try:
+                    caption = normalize_video_caption_for_profile(raw_caption, self.profile)
+                    break
+                except ValueError as error:
+                    validation_error = str(error)
+                    if attempt:
+                        raise
+            if caption is None:
+                raise ValueError(validation_error or "Video caption validation failed")
+            caption = apply_video_trigger(caption, self.profile)
+            caption_status = "generated_after_validation_retry" if validation_error else "generated"
+        else:
+            source_caption = source_path.with_suffix(".txt")
+            if source_caption.is_file():
+                caption = source_caption.read_text(encoding="utf-8-sig").strip()
+                caption_status = "copied_source"
+            else:
+                caption = self.profile.get("trigger", "").strip()
+                caption_status = "trigger_placeholder"
+            with_trigger = apply_video_trigger(caption, self.profile)
             if with_trigger != caption:
                 caption_status = f"{caption_status}_with_trigger"
             caption = with_trigger

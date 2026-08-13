@@ -1,28 +1,29 @@
 {
   "id": "7d02dbb7-1631-46e9-a734-00e27543b78f",
   "revision": 0,
-  "last_node_id": 10,
-  "last_link_id": 9,
+  "last_node_id": 11,
+  "last_link_id": 10,
   "nodes": [
     {
       "id": 1,
       "type": "LoraDatasetSource",
       "pos": [0, 0],
-      "size": [420, 90],
+      "size": [420, 120],
       "flags": {},
       "order": 0,
       "mode": 0,
       "inputs": [
         {"name": "source_directory", "type": "STRING", "widget": {"name": "source_directory"}, "link": null},
-        {"name": "recursive", "type": "BOOLEAN", "widget": {"name": "recursive"}, "link": null}
+        {"name": "recursive", "type": "BOOLEAN", "widget": {"name": "recursive"}, "link": null},
+        {"name": "media_type", "type": "COMBO", "widget": {"name": "media_type"}, "link": null}
       ],
       "outputs": [
         {"name": "source", "type": "LORA_DATASET_SOURCE", "slot_index": 0, "links": [1]},
         {"name": "status", "type": "STRING", "links": null}
       ],
-      "title": "1 — Source Images",
+      "title": "1 — Source Media",
       "properties": {"Node name for S&R": "LoraDatasetSource"},
-      "widgets_values": ["", true]
+      "widgets_values": ["", true, "images"]
     },
     {
       "id": 2,
@@ -178,12 +179,51 @@
       "widgets_values": [512]
     },
     {
+      "id": 11,
+      "type": "LoraDatasetVideoPrep",
+      "pos": [1000, 810],
+      "size": [520, 760],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "ffmpeg_path", "type": "STRING", "widget": {"name": "ffmpeg_path"}, "link": null},
+        {"name": "start_time", "type": "FLOAT", "widget": {"name": "start_time"}, "link": null},
+        {"name": "duration", "type": "FLOAT", "widget": {"name": "duration"}, "link": null},
+        {"name": "fps", "type": "FLOAT", "widget": {"name": "fps"}, "link": null},
+        {"name": "width", "type": "INT", "widget": {"name": "width"}, "link": null},
+        {"name": "height", "type": "INT", "widget": {"name": "height"}, "link": null},
+        {"name": "resize_mode", "type": "COMBO", "widget": {"name": "resize_mode"}, "link": null},
+        {"name": "crop_position", "type": "COMBO", "widget": {"name": "crop_position"}, "link": null},
+        {"name": "pad_short_video", "type": "BOOLEAN", "widget": {"name": "pad_short_video"}, "link": null},
+        {"name": "keep_audio", "type": "BOOLEAN", "widget": {"name": "keep_audio"}, "link": null},
+        {"name": "crf", "type": "INT", "widget": {"name": "crf"}, "link": null},
+        {"name": "encoder_preset", "type": "COMBO", "widget": {"name": "encoder_preset"}, "link": null},
+        {"name": "caption_frames", "type": "INT", "widget": {"name": "caption_frames"}, "link": null},
+        {"name": "caption_megapixels", "type": "FLOAT", "widget": {"name": "caption_megapixels"}, "link": null},
+        {"name": "target_frame_count", "type": "INT", "widget": {"name": "target_frame_count"}, "link": null},
+        {"name": "size_strategy", "type": "COMBO", "widget": {"name": "size_strategy"}, "link": null},
+        {"name": "landscape_width", "type": "INT", "widget": {"name": "landscape_width"}, "link": null},
+        {"name": "landscape_height", "type": "INT", "widget": {"name": "landscape_height"}, "link": null},
+        {"name": "portrait_width", "type": "INT", "widget": {"name": "portrait_width"}, "link": null},
+        {"name": "portrait_height", "type": "INT", "widget": {"name": "portrait_height"}, "link": null},
+        {"name": "orientation_filter", "type": "COMBO", "widget": {"name": "orientation_filter"}, "link": null}
+      ],
+      "outputs": [
+        {"name": "video_prep", "type": "LORA_VIDEO_PREP", "slot_index": 0, "links": [10]},
+        {"name": "status", "type": "STRING", "links": null}
+      ],
+      "title": "7 — Video Prep (used in video mode)",
+      "properties": {"Node name for S&R": "LoraDatasetVideoPrep"},
+      "widgets_values": ["", 0.0, 5.0, 24.0, 1024, 1024, "crop_to_fill", "center", false, false, 18, "medium", 8, 0.35, 107, "normalize_by_orientation", 896, 512, 512, 896, "both"]
+    },
+    {
       "id": 8,
       "type": "LoraDatasetBuilder",
       "pos": [1580, 0],
       "size": [520, 390],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {"name": "source", "type": "LORA_DATASET_SOURCE", "link": 1},
@@ -198,6 +238,7 @@
         {"name": "cleanup_verifier", "type": "LORA_CLEANUP_VERIFIER", "link": 5},
         {"name": "analysis_provider", "type": "LORA_ANALYSIS_PROVIDER", "link": 6},
         {"name": "crop_provider", "type": "LORA_CROP_PROVIDER", "link": 7},
+        {"name": "video_prep", "type": "LORA_VIDEO_PREP", "link": 10},
         {"name": "cleanup_override_images", "type": "STRING", "widget": {"name": "cleanup_override_images"}, "link": null}
       ],
       "outputs": [
@@ -214,7 +255,7 @@
       "pos": [1580, 460],
       "size": [540, 580],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [{"name": "status_json", "type": "STRING", "link": 8}],
       "outputs": [
@@ -232,7 +273,7 @@
       "pos": [2200, 0],
       "size": [520, 500],
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [{"name": "status_json", "type": "STRING", "link": 9}],
       "outputs": [{"name": "summary", "type": "STRING", "links": null}],
@@ -249,12 +290,13 @@
     [5, 5, 0, 8, 9, "LORA_CLEANUP_VERIFIER"],
     [6, 6, 0, 8, 10, "LORA_ANALYSIS_PROVIDER"],
     [7, 7, 0, 8, 11, "LORA_CROP_PROVIDER"],
+    [10, 11, 0, 8, 12, "LORA_VIDEO_PREP"],
     [8, 8, 0, 9, 0, "STRING"],
     [9, 8, 0, 10, 0, "STRING"]
   ],
   "groups": [
     {"id": 1, "title": "Simple App Inputs", "bounding": [-40, -60, 460, 550], "color": "#3f789e", "font_size": 24, "flags": {}},
-    {"id": 2, "title": "Provider Configuration", "bounding": [440, -60, 1100, 920], "color": "#8A6A3D", "font_size": 24, "flags": {}},
+    {"id": 2, "title": "Provider Configuration", "bounding": [440, -60, 1100, 1430], "color": "#8A6A3D", "font_size": 24, "flags": {}},
     {"id": 3, "title": "Stateful Backend + Reports", "bounding": [1540, -60, 1220, 1140], "color": "#4F7A55", "font_size": 24, "flags": {}}
   ],
   "config": {},
@@ -264,10 +306,11 @@
     "linearMode": true,
     "linearData": {
       "inputs": [
-        [1, "source_directory", {"description": "Folder containing the original images."}],
-        [1, "recursive", {"description": "Include images in subfolders."}],
+        [1, "source_directory", {"description": "Folder containing the original images or videos."}],
+        [1, "recursive", {"description": "Include supported media in subfolders."}],
+        [1, "media_type", {"description": "Build PNG/TXT image pairs or prepared MP4/TXT video pairs."}],
         [8, "destination_directory", {"description": "Project output folder containing dataset, manifest, review, and reports."}],
-        [2, "training_model", {"description": "Caption and validation recipe. Initially Krea 2 or Anima."}],
+        [2, "training_model", {"description": "Training target recipe. Use MiniMax H3 with video media; Krea 2 or Anima with images."}],
         [2, "dataset_type", {"description": "Character, Style, or Concept."}],
         [2, "trigger", {"description": "LoRA trigger token or phrase."}],
         [2, "additional_caption_instructions", {"height": 110, "description": "Optional instructions for an unusual dataset."}],
@@ -288,7 +331,28 @@
         [5, "residual_detection_mode", {"description": "Trust Klein and retain only image-fidelity verification, or optionally scan again for residual watermarks."}],
         [5, "confidence", {"description": "Minimum residual-watermark confidence. The default is 30%; raise it to reduce false positives."}],
         [6, "subject_model", {"description": "Local subject detector used for safe cropping."}],
-        [6, "face_model", {"description": "Local face detector used for identity preservation."}]
+        [6, "face_model", {"description": "Local face detector used for identity preservation."}],
+        [11, "ffmpeg_path", {"description": "Optional full path to ffmpeg. Leave blank to use PATH."}],
+        [11, "start_time", {"description": "Seconds to skip at the beginning of every source video."}],
+        [11, "duration", {"description": "Prepared clip length in seconds. Default: 5."}],
+        [11, "fps", {"description": "Prepared clip frame rate. Default: 24."}],
+        [11, "width", {"description": "Maximum or exact output width, depending on resize mode. Ignored by keep_native."}],
+        [11, "height", {"description": "Maximum or exact output height, depending on resize mode. Ignored by keep_native."}],
+        [11, "resize_mode", {"description": "Keep native dimensions, crop to fill, fit within, pad to fit, or stretch."}],
+        [11, "crop_position", {"description": "Crop anchor used only by crop_to_fill."}],
+        [11, "pad_short_video", {"description": "Freeze the final frame if the source is shorter than duration."}],
+        [11, "keep_audio", {"description": "Preserve source audio as AAC. Most visual LoRA datasets can leave this off."}],
+        [11, "crf", {"description": "H.264 quality: lower is higher quality. Default: 18."}],
+        [11, "encoder_preset", {"description": "FFmpeg speed/compression tradeoff."}],
+        [11, "caption_frames", {"description": "Ordered frames sampled across each prepared clip for one caption request."}],
+        [11, "caption_megapixels", {"description": "Maximum size of each API caption frame."}],
+        [11, "target_frame_count", {"description": "Exact output frames. Use 107 for a single stable H3 temporal bucket; 0 falls back to duration. Short clips hold their final frame."}],
+        [11, "size_strategy", {"description": "Use separate exact landscape and portrait targets to prevent heterogeneous AI Toolkit buckets."}],
+        [11, "landscape_width", {"description": "Exact width for landscape clips when normalizing by orientation."}],
+        [11, "landscape_height", {"description": "Exact height for landscape clips when normalizing by orientation."}],
+        [11, "portrait_width", {"description": "Exact width for portrait clips when normalizing by orientation."}],
+        [11, "portrait_height", {"description": "Exact height for portrait clips when normalizing by orientation."}],
+        [11, "orientation_filter", {"description": "Process both orientations or exclude portrait/landscape clips for separate datasets."}]
       ],
       "outputs": [10]
     }

@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from .path_utils import ensure_directory
+from .video import VIDEO_EXTENSIONS
 
 
 IMAGE_EXTENSIONS = {
@@ -19,7 +20,7 @@ def sidecar_stem(filename):
     # interpret the basename.
     name = str(filename).replace("\\", "/").rsplit("/", 1)[-1]
     path = Path(name)
-    if path.suffix.lower() in IMAGE_EXTENSIONS:
+    if path.suffix.lower() in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS:
         name = path.stem
 
     name = _WINDOWS_ILLEGAL_FILENAME_CHARS.sub("_", name).rstrip(" .")

@@ -8,6 +8,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from .video import VIDEO_EXTENSIONS
+
 
 INTELLIGENCE_SCHEMA_VERSION = 2
 
@@ -76,7 +78,7 @@ def find_near_duplicate_groups(records, maximum_distance=6, hash_size=8):
     hashed = []
     for record in records:
         image_path = Path(record["output_image_path"])
-        if not image_path.is_file():
+        if not image_path.is_file() or image_path.suffix.casefold() in VIDEO_EXTENSIONS:
             continue
         reference = _image_reference(record)
         hashed.append({
@@ -264,11 +266,26 @@ def _item_quality(record, profile, duplicate_caption_images):
     dimensions = None
     orientation = "unknown"
     megapixels = 0.0
-    if image_path.is_file():
+    is_video = image_path.suffix.casefold() in VIDEO_EXTENSIONS
+    video_metadata = None
+    if image_path.is_file() and is_video:
+        analysis = _json_object(record.get("analysis_json"))
+        video_metadata = analysis.get("video") if isinstance(analysis.get("video"), dict) else {}
+        width = int(video_metadata.get("width") or 0)
+        height = int(video_metadata.get("height") or 0)
+        if width > 0 and height > 0:
+            dimensions = [width, height]
+            orientation = "square" if width == height else "landscape" if width > height else "portrait"
+            megapixels = (width * height) / 1_000_000
+        else:
+            warnings.append("video_metadata_missing")
+            score -= 25
+    elif image_path.is_file():
         with Image.open(image_path) as image:
             dimensions = [image.width, image.height]
             orientation = "square" if image.width == image.height else "landscape" if image.width > image.height else "portrait"
             megapixels = (image.width * image.height) / 1_000_000
+    if dimensions:
         minimum_dimension = int(settings.get("quality_minimum_dimension", 512))
         if min(dimensions) < minimum_dimension:
             warnings.append("low_resolution")
@@ -277,7 +294,7 @@ def _item_quality(record, profile, duplicate_caption_images):
             warnings.append("low_megapixels")
             score -= 10
     else:
-        warnings.append("image_missing")
+        warnings.append("media_missing")
         score -= 60
 
     analysis = _json_object(record.get("analysis_json"))
@@ -337,6 +354,9 @@ def _item_quality(record, profile, duplicate_caption_images):
         "brightness_mean": brightness,
         "contrast_stddev": contrast,
         "edge_sharpness": sharpness,
+        "media_type": "video" if is_video else "image",
+        "duration": video_metadata.get("duration") if isinstance(video_metadata, dict) else None,
+        "fps": video_metadata.get("fps") if isinstance(video_metadata, dict) else None,
     }
 
 
@@ -467,6 +487,7 @@ def build_dataset_report(records, profile, training_ready):
             "eligible": len(eligible_records),
             "failed": len(failed_records),
             "excluded": len(excluded_records),
+            "media_types": dict(Counter(item["media_type"] for item in quality_items)),
         },
         "duplicates": {
             "exact_excluded_count": len(exact_duplicate_exclusions),

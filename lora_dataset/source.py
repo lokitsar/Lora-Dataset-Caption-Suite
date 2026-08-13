@@ -37,16 +37,17 @@ class SourceItem:
 
 
 class DatasetSource:
-    def __init__(self, source_directory, recursive=True, excluded_directories=None):
+    def __init__(self, source_directory, recursive=True, excluded_directories=None, extensions=None):
         self.root = normalized_path(source_directory)
         if not self.root.is_dir():
             raise NotADirectoryError(f"Source directory does not exist: {self.root}")
         self.recursive = bool(recursive)
         self.excluded_directories = [normalized_path(path) for path in (excluded_directories or [])]
+        self.extensions = {suffix.casefold() for suffix in extensions} if extensions else None
 
     def discover(self):
         iterator = self.root.rglob("*") if self.recursive else self.root.glob("*")
-        extensions = supported_image_extensions()
+        extensions = self.extensions or supported_image_extensions()
         paths = []
         for path in iterator:
             if not path.is_file() or path.suffix.lower() not in extensions:
