@@ -28,6 +28,10 @@ separate caption guidance for Character, Style, and Concept LoRAs.
 - Video captioning sends one ordered set of evenly distributed frames to the selected
   vision API so the result describes appearance, motion, action progression, camera
   behavior, and ending state rather than one isolated frame.
+- Optional Whisper caption evidence adds aligned dialogue and explicit audible cues to
+  the same request. Point the App at the original movie to transcribe and cache it once;
+  Clip Harvester timestamps map that transcript to each exported clip. If no original is
+  supplied, the suite transcribes and caches the individual source clips.
 - Video captions use a dedicated MiniMax H3 LoRA policy: natural English, visible
   evidence only, explicit subject-versus-camera motion, useful secondary motion,
   chronological progression, no uncertainty language, and no generic quality tags.
@@ -120,6 +124,7 @@ discover source videos
   -> keep native size, crop-to-fill, fit-within, pad-to-fit, or stretch
   -> H.264 MP4 encoding (optional AAC audio)
   -> ordered frame sampling across the prepared clip
+  -> cached Whisper dialogue alignment from the original movie or individual clip
   -> one temporal positive caption through the configured vision API
   -> exact MP4/TXT validation
   -> duplicate, resolution, duration, caption, and readiness report

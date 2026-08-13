@@ -33,6 +33,7 @@ from .video import (
     normalize_video_config,
     video_config_version,
 )
+from .transcription import WHISPER_DEVICES, WHISPER_MODELS
 
 
 PROFILE_REGISTRY = DatasetProfileRegistry()
@@ -476,6 +477,18 @@ class DatasetVideoPrepNode:
                 "portrait_width": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 2}),
                 "portrait_height": ("INT", {"default": 896, "min": 64, "max": 4096, "step": 2}),
                 "orientation_filter": (list(ORIENTATION_FILTERS),),
+                "transcribe_audio": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Use Whisper dialogue and audible transcript cues as additional caption evidence.",
+                }),
+                "original_video_path": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "placeholder": "Recommended: original full movie; blank uses harvester metadata or each clip",
+                }),
+                "whisper_model": (list(WHISPER_MODELS), {"default": "small.en"}),
+                "whisper_language": ("STRING", {"default": "en", "multiline": False}),
+                "whisper_device": (list(WHISPER_DEVICES), {"default": "auto"}),
             }
         }
 
@@ -505,7 +518,9 @@ class DatasetVideoPrepNode:
             f"FFmpeg: {ffmpeg} / {timing} / "
             f"{dimensions} {config['resize_mode']} / "
             f"orientation {config['orientation_filter']} / "
-            f"{config['caption_frames']} caption frames / config {video_config_version(config)}"
+            f"{config['caption_frames']} caption frames / "
+            f"Whisper {config['whisper_model'] if config['transcribe_audio'] else 'off'} / "
+            f"config {video_config_version(config)}"
         )
         return (config, status)
 

@@ -20,6 +20,12 @@ from .manifest import DatasetManifest
 from .path_utils import ensure_directory, normalized_path
 from .sidecar import DatasetSidecarWriter
 from .source import DatasetSource
+from .transcription import (
+    WhisperTranscriber,
+    discover_original_video,
+    harvester_start_time,
+    transcript_for_window,
+)
 from .validator import DatasetValidator
 from .video import (
     VIDEO_EXTENSIONS,
@@ -126,6 +132,7 @@ class DatasetEngine:
         self.review_directory = ensure_directory(self.destination_directory / "review")
         self.manifest_directory = ensure_directory(self.destination_directory / "manifest")
         self.reports_directory = ensure_directory(self.destination_directory / "reports")
+        self.transcripts_directory = ensure_directory(self.destination_directory / "transcripts")
         self.manifest = DatasetManifest(self.manifest_directory / "dataset.db")
         self.source = DatasetSource(
             self.source_directory,
@@ -135,6 +142,19 @@ class DatasetEngine:
         )
         self.sidecars = DatasetSidecarWriter()
         self.validator = DatasetValidator()
+        self.transcriber = None
+        self.original_video_path = None
+        self.original_transcript = None
+        if self.video_config and self.video_config["transcribe_audio"]:
+            self.transcriber = WhisperTranscriber(
+                self.transcripts_directory,
+                model_name=self.video_config["whisper_model"],
+                language=self.video_config["whisper_language"],
+                device=self.video_config["whisper_device"],
+            )
+            self.original_video_path = discover_original_video(
+                self.source_directory, self.video_config["original_video_path"]
+            )
 
     def _cleanup_override_for_record(self, record):
         source_relative = str(record.get("source_relative_path") or "").replace("\\", "/")
@@ -269,6 +289,12 @@ class DatasetEngine:
         work_total = int(self.manifest.summary().get("pending", 0) or 0)
         self._notify_progress(processed, work_total, "", failures, excluded, "running")
 
+        if self.transcriber is not None and self.original_video_path is not None:
+            try:
+                self.original_transcript = self.transcriber.transcribe(self.original_video_path)
+            finally:
+                self.transcriber.close()
+
         while limit == 0 or processed < limit:
             if self.interrupt_callback is not None:
                 self.interrupt_callback()
@@ -356,6 +382,8 @@ class DatasetEngine:
         self._notify_progress(
             processed, work_total, last_file, failures, excluded, "complete"
         )
+        if self.transcriber is not None:
+            self.transcriber.close()
         return result
 
     def _notify_progress(self, processed, total, current_file, failed, excluded, status):
@@ -768,6 +796,7 @@ class DatasetEngine:
 
         if self.caption_provider is not None:
             instruction = build_caption_instruction(self.profile, media_type="video")
+            audio_evidence = self._video_audio_evidence(source_path, metadata)
             caption_context = {
                 "source_path": str(source_path),
                 "dataset_type": self.profile.get("dataset_type"),
@@ -775,6 +804,7 @@ class DatasetEngine:
                 "media_type": "video",
                 "video": metadata,
                 "video_config": self.video_config,
+                "audio_evidence": audio_evidence,
             }
             caption = None
             validation_error = None
@@ -815,6 +845,20 @@ class DatasetEngine:
             caption = with_trigger
         self.sidecars.write(caption, output_path.name, output_path.parent, existing_file="overwrite")
         return caption_status
+
+    def _video_audio_evidence(self, source_path, metadata):
+        if self.transcriber is None:
+            return ""
+        duration = float(metadata.get("duration") or self.video_config["duration"])
+        clip_offset = float(self.video_config.get("start_time") or 0.0)
+        if self.original_transcript is not None:
+            harvested_start = harvester_start_time(source_path)
+            if harvested_start is not None:
+                return transcript_for_window(
+                    self.original_transcript, harvested_start + clip_offset, duration
+                )
+        transcript = self.transcriber.transcribe(source_path)
+        return transcript_for_window(transcript, clip_offset, duration)
 
     def _route_cleanup_review(self, record, output_path, verification):
         review_path = ensure_directory(

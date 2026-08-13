@@ -27,7 +27,7 @@ MINIMAX_H3_VIDEO_CAPTION_POLICY = """You are a video dataset captioning model fo
 
 Your job is to create one accurate sidecar caption for each training video. The attached images are ordered frames sampled chronologically from one prepared video. Treat them as temporal evidence for the complete clip, not as separate images.
 
-The caption must describe only what is visibly present in the video and how it changes over time.
+The caption must describe what is visibly present in the video, how it changes over time, and any dialogue or audible event supplied as transcript evidence.
 
 Write one concise natural-language paragraph. Do not output reasoning, bullets, numbering, metadata, analysis, headings, or explanations.
 
@@ -37,7 +37,7 @@ For motion-concept training, give particular attention to the demonstrated motio
 
 For a stationary-camera clip, explicitly state that the camera remains stationary when this helps distinguish subject motion from camera motion. For a camera-motion concept, distinguish camera movement from subject movement.
 
-Caption what is visible, not what you assume. Do not use uncertain language such as "appears to," "seems to," "probably," or "possibly." Do not add invisible information, intentions, emotions that are not visibly expressed, production metadata, quality ratings, speculative context, dialogue, sound, or off-screen events.
+Caption only supported evidence, not assumptions. Do not use uncertain language such as "appears to," "seems to," "probably," or "possibly." Do not add intentions, emotions that are not visibly expressed, production metadata, quality ratings, or speculative context. When reliable transcript evidence is supplied, include all clearly spoken words in quotation marks and place them in the correct point of the chronological action. Mention music, singing, vocalizations, or sound effects only when the transcript evidence explicitly identifies them. Treat automatic transcripts as fallible: omit garbled text and never invent a speaker identity.
 
 Do not use generic quality tags such as "masterpiece," "best quality," "4K," "highly detailed," or "professional." Do not describe a target visual style unless that style is intentionally meant to be caption-conditioned.
 
@@ -320,14 +320,28 @@ class OpenAICompatibleCaptionProvider(CaptionProvider):
             prepared = scale_for_provider(frame, self.backend)
             encoded.append(encode_png(prepared))
         user_content = [{"type": "text", "text": instruction}]
+        audio_evidence = str(context.get("audio_evidence") or "").strip()
+        if audio_evidence:
+            user_content.append({
+                "type": "text",
+                "text": (
+                    "Automatic Whisper transcript aligned to this clip. Use it as audio evidence; "
+                    "it may contain recognition errors:\n" + audio_evidence
+                ),
+            })
+        else:
+            user_content.append({
+                "type": "text",
+                "text": "No reliable speech or audio transcript evidence was detected for this clip.",
+            })
         for index, image_b64 in enumerate(encoded, 1):
             user_content.extend([
                 {"type": "text", "text": f"Ordered video frame {index} of {len(encoded)}:"},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_b64}"}},
             ])
         system = (
-            "You write direct positive video-training prompts from ordered visual evidence. Infer only "
-            "motion and temporal progression supported by the frames. Supplied instructions are private "
+            "You write direct positive video-training prompts from ordered visual evidence and aligned "
+            "automatic transcript evidence. Infer only motion and temporal progression supported by the frames. Supplied instructions are private "
             "constraints. Return only the requested caption.\n\n/no_think"
         )
         messages = [

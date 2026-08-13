@@ -182,7 +182,7 @@
       "id": 11,
       "type": "LoraDatasetVideoPrep",
       "pos": [1000, 810],
-      "size": [520, 760],
+      "size": [520, 920],
       "flags": {},
       "order": 7,
       "mode": 0,
@@ -207,7 +207,12 @@
         {"name": "landscape_height", "type": "INT", "widget": {"name": "landscape_height"}, "link": null},
         {"name": "portrait_width", "type": "INT", "widget": {"name": "portrait_width"}, "link": null},
         {"name": "portrait_height", "type": "INT", "widget": {"name": "portrait_height"}, "link": null},
-        {"name": "orientation_filter", "type": "COMBO", "widget": {"name": "orientation_filter"}, "link": null}
+        {"name": "orientation_filter", "type": "COMBO", "widget": {"name": "orientation_filter"}, "link": null},
+        {"name": "transcribe_audio", "type": "BOOLEAN", "widget": {"name": "transcribe_audio"}, "link": null},
+        {"name": "original_video_path", "type": "STRING", "widget": {"name": "original_video_path"}, "link": null},
+        {"name": "whisper_model", "type": "COMBO", "widget": {"name": "whisper_model"}, "link": null},
+        {"name": "whisper_language", "type": "STRING", "widget": {"name": "whisper_language"}, "link": null},
+        {"name": "whisper_device", "type": "COMBO", "widget": {"name": "whisper_device"}, "link": null}
       ],
       "outputs": [
         {"name": "video_prep", "type": "LORA_VIDEO_PREP", "slot_index": 0, "links": [10]},
@@ -215,7 +220,7 @@
       ],
       "title": "7 — Video Prep (used in video mode)",
       "properties": {"Node name for S&R": "LoraDatasetVideoPrep"},
-      "widgets_values": ["", 0.0, 5.0, 24.0, 1024, 1024, "crop_to_fill", "center", false, false, 18, "medium", 8, 0.35, 107, "normalize_by_orientation", 896, 512, 512, 896, "both"]
+      "widgets_values": ["", 0.0, 5.0, 24.0, 1024, 1024, "crop_to_fill", "center", false, false, 18, "medium", 8, 0.35, 107, "normalize_by_orientation", 896, 512, 512, 896, "both", true, "", "small.en", "en", "auto"]
     },
     {
       "id": 8,
@@ -352,7 +357,12 @@
         [11, "landscape_height", {"description": "Exact height for landscape clips when normalizing by orientation."}],
         [11, "portrait_width", {"description": "Exact width for portrait clips when normalizing by orientation."}],
         [11, "portrait_height", {"description": "Exact height for portrait clips when normalizing by orientation."}],
-        [11, "orientation_filter", {"description": "Process both orientations or exclude portrait/landscape clips for separate datasets."}]
+        [11, "orientation_filter", {"description": "Process both orientations or exclude portrait/landscape clips for separate datasets."}],
+        [11, "transcribe_audio", {"description": "Use Whisper dialogue and explicit audible transcript cues when writing each video caption."}],
+        [11, "original_video_path", {"description": "Recommended: original full movie. It is transcribed once and aligned through Clip Harvester timestamps. Blank uses harvester metadata or transcribes each clip."}],
+        [11, "whisper_model", {"description": "Whisper speech model. small.en is the recommended English accuracy/speed balance."}],
+        [11, "whisper_language", {"description": "Speech language code, for example en. Leave blank for automatic detection."}],
+        [11, "whisper_device", {"description": "Auto uses CUDA when available, otherwise CPU."}]
       ],
       "outputs": [10]
     }

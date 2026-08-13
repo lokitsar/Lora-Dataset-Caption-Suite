@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -24,6 +25,11 @@ from lora_dataset.video import (
     prepare_video,
     probe_video,
     sample_video_frames,
+)
+from lora_dataset.transcription import (
+    discover_original_video,
+    harvester_start_time,
+    transcript_for_window,
 )
 
 
@@ -220,6 +226,7 @@ def test_video_instruction_is_temporal_but_image_instruction_is_unchanged():
     assert "MiniMax H3 LoRA training" in video_instruction
     assert "distinguish camera movement from subject movement" in video_instruction
     assert "camera remains stationary" in video_instruction
+    assert "include all clearly spoken words in quotation marks" in video_instruction
     assert "leaving the shared target style primarily represented by the trigger" in video_instruction
     assert "Use natural English rather than tag-style captions" in video_instruction
     assert "attached image" in build_caption_instruction(recipe)
@@ -297,9 +304,55 @@ def test_openai_video_caption_request_contains_ordered_frame_images():
     content = captured["messages"][1]["content"]
     assert result == "a subject moves from left to right"
     assert [part["type"] for part in content].count("image_url") == 3
-    labels = [part["text"] for part in content if part["type"] == "text"][1:]
+    labels = [
+        part["text"] for part in content
+        if part["type"] == "text" and part["text"].startswith("Ordered video frame")
+    ]
     assert labels == [
         "Ordered video frame 1 of 3:",
         "Ordered video frame 2 of 3:",
         "Ordered video frame 3 of 3:",
     ]
+
+
+def test_openai_video_caption_request_includes_whisper_evidence():
+    provider = OpenAICompatibleCaptionProvider({
+        "backend": "OpenRouter",
+        "api_url": "https://example.invalid/v1",
+        "api_key": "test",
+        "model_name": "vision-model",
+    })
+    captured = {}
+    provider._openai_request = lambda messages: captured.setdefault("messages", messages) and "a woman says hello"
+    frames = [Image.new("RGB", (32, 24), "black")]
+    with patch("lora_dataset.captioning.sample_video_frames", return_value=(frames, {"duration": 5.0})):
+        provider.caption_video(
+            "clip.mp4",
+            "Describe the clip.",
+            {"video_config": {}, "audio_evidence": "Hello there."},
+        )
+    text_parts = [part["text"] for part in captured["messages"][1]["content"] if part["type"] == "text"]
+    assert any("Hello there." in text for text in text_parts)
+
+
+def test_harvester_timestamp_and_transcript_window_alignment(tmp_path):
+    clip = tmp_path / "movie__0042_t0000265000.mp4"
+    assert harvester_start_time(clip) == 265.0
+    transcript = {
+        "segments": [
+            {"start": 260.0, "end": 264.0, "text": "Too early."},
+            {"start": 265.1, "end": 267.0, "text": "Open the door."},
+            {"start": 269.5, "end": 271.0, "text": "At the edge."},
+            {"start": 272.0, "end": 273.0, "text": "Too late."},
+        ]
+    }
+    assert transcript_for_window(transcript, 265.0, 5.0) == "Open the door. At the edge."
+
+
+def test_clip_harvester_manifest_discovers_original_video(tmp_path):
+    original = tmp_path / "movie.mkv"
+    original.write_bytes(b"movie")
+    (tmp_path / "clip_harvester_source.json").write_text(
+        json.dumps({"schema_version": 1, "source_video": str(original)}), encoding="utf-8"
+    )
+    assert discover_original_video(tmp_path) == original.resolve()

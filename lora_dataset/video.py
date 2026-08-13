@@ -12,6 +12,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from .transcription import WHISPER_DEVICES, WHISPER_MODELS
+
 
 VIDEO_EXTENSIONS = {".avi", ".flv", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".webm"}
 CROP_POSITIONS = {
@@ -92,6 +94,12 @@ def normalize_video_config(config=None):
         # Duration and padding become derived behavior in exact-frame mode.
         duration = target_frame_count / fps
         pad_short_video = True
+    whisper_model = str(raw.get("whisper_model", "small.en"))
+    whisper_device = str(raw.get("whisper_device", "auto"))
+    if whisper_model not in WHISPER_MODELS:
+        raise ValueError(f"Unknown Whisper model: {whisper_model}")
+    if whisper_device not in WHISPER_DEVICES:
+        raise ValueError(f"Unknown Whisper device: {whisper_device}")
     return {
         "ffmpeg_path": str(raw.get("ffmpeg_path", "")).strip(),
         "start_time": max(0.0, float(raw.get("start_time", 0.0))),
@@ -114,7 +122,12 @@ def normalize_video_config(config=None):
         "encoder_preset": preset,
         "caption_frames": min(32, max(2, int(raw.get("caption_frames", 8)))),
         "caption_megapixels": min(4.0, max(0.05, float(raw.get("caption_megapixels", 0.35)))),
-        "schema_version": 3,
+        "transcribe_audio": bool(raw.get("transcribe_audio", False)),
+        "original_video_path": str(raw.get("original_video_path", "")).strip(),
+        "whisper_model": whisper_model,
+        "whisper_language": str(raw.get("whisper_language", "en")).strip(),
+        "whisper_device": whisper_device,
+        "schema_version": 4,
     }
 
 
